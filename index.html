@@ -743,11 +743,23 @@ function refine(f){
   const med = [...res].sort((a,b)=>a-b)[res.length>>1];
   const keep = pts.filter((_, i) => res[i] <= Math.max(0.02, 2.2*med));
   if (keep.length >= 10) fit = circleFit(keep) || fit;
-  if (fit.R < 0.8 || fit.R > 1.25 || Math.abs(fit.a) > 0.25 || Math.abs(fit.b) > 0.25) return;
-  f.c = toCrop(f, fit.a, fit.b);
+  // pontos só dos lados seguram bem o centro horizontal e o raio, mas não o vertical
+  const fx = fitLateral(keep.length >= 10 ? keep : pts);
+  if (!fx || fx.R < 0.88 || fx.R > 1.15 || Math.abs(fx.a) > 0.2) return;
+  fit = fx;
+  f.c = toCrop(f, fit.a, 0);
   f.rx *= fit.R; f.ry *= fit.R;
 }
 
+// Círculo com centro vertical fixo em 0: minimiza (u-a)^2 + v^2 - R^2 → linear em a e (R^2 - a^2).
+function fitLateral(pts){
+  let su=0, suu=0, sz=0, suz=0; const n = pts.length;
+  for (const [u,v] of pts){ const z = u*u + v*v; su += u; suu += u*u; sz += z; suz += u*z; }
+  // z = 2a·u + c  →  regressão linear
+  const det = n*suu - su*su; if (Math.abs(det) < 1e-9) return null;
+  const k = (n*suz - su*sz)/det, c = (sz - k*su)/n, a = k/2, R2 = c + a*a;
+  return R2 > 0 ? { a, b:0, R:Math.sqrt(R2) } : null;
+}
 function circleFit(pts){
   let su=0, sv=0, suu=0, svv=0, suv=0, sz=0, suz=0, svz=0; const n = pts.length;
   for (const [u,v] of pts){ const z = u*u+v*v; su+=u; sv+=v; suu+=u*u; svv+=v*v; suv+=u*v; sz+=z; suz+=u*z; svz+=v*z; }
@@ -980,11 +992,31 @@ async function processFrames(frames){
   }
   pushPull([R, Gc, B], Wt, N);
 
-  S.result = { N, R, G:Gc, B, frames:frames.length, used:used.length, holes:holes/NN };
+  S.result = { N, R, G:Gc, B, frames:frames.length, used:used.length, holes:holes/NN, wb:whiteBalance(used) };
   $("stats").textContent = `${used.length} de ${frames.length} quadros · íris de ${Math.round(2*rMed)} px · saída 1800 px`;
   await progress(1, "Pronto");
   drawSheet();
   await render();
+}
+
+// Balanço de branco: o branco do olho (dos lados da íris) deveria ser neutro.
+function whiteBalance(frames){
+  const rs = [], gs = [], bs = [];
+  for (const f of frames){
+    const d = f.img.data;
+    for (let k=0; k<160; k++){
+      const side = k % 2 ? 1 : -1, u = side*(1.2 + Math.random()*0.3), v = (Math.random()-0.5)*0.5;
+      const [x, y] = toCrop(f, u, v), xi = Math.round(x), yi = Math.round(y);
+      if (xi < 0 || yi < 0 || xi >= f.W || yi >= f.H || f.spec[yi*f.W+xi]) continue;
+      const p = (yi*f.W+xi)*4, l = f.lum[yi*f.W+xi];
+      if (l < 0.25) continue; // cílio, sombra
+      rs.push(d[p]); gs.push(d[p+1]); bs.push(d[p+2]);
+    }
+  }
+  if (rs.length < 50) return [1,1,1];
+  const med = a => a.sort((x,y)=>x-y)[a.length>>1];
+  const r = med(rs), g = med(gs), b = med(bs), m = (r+g+b)/3;
+  return [r, g, b].map(c => Math.min(1.5, Math.max(0.7, m/Math.max(1, c))));
 }
 
 // Preenche buracos puxando cor das regiões vizinhas (pirâmide push-pull).
@@ -1047,8 +1079,8 @@ function params(){
 async function render(){
   if (rendering){ renderAgain = true; return; }
   rendering = true;
-  const { N, R, G, B } = S.result, P = params(), NN = N*N;
-  const chs = [R, G, B].map(c => new Float32Array(c));
+  const { N, R, G, B, wb } = S.result, P = params(), NN = N*N;
+  const chs = [R, G, B].map((c, k) => { const o = new Float32Array(c); const w = wb?.[k] ?? 1; for (let i=0;i<o.length;i++) o[i] *= w; return o; });
   const sr = Math.max(1, N/900), lr = N/45;
   for (let k=0; k<3; k++){
     const c = chs[k];
