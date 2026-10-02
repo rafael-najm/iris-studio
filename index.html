@@ -964,7 +964,7 @@ function buildSpecMask(f){
   }
   vals.sort((a,b)=>a-b);
   const med = vals.length ? vals[vals.length>>1] : 0.3;
-  const thr = Math.min(0.96, Math.max(0.8, med*2 + 0.3)); // só o reflexo quase estourado
+  const thr = Math.min(0.96, Math.max(0.35, med*3 + 0.15)); // reflexo: bem mais claro que a íris (vale pra foto escura também)
   const bad = new Uint8Array(W*H);
   for (let i=0; i<W*H; i++) bad[i] = lum[i] > thr ? 1 : 0;
   const rad = Math.max(2, Math.round(0.05*f.rx));
