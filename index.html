@@ -100,6 +100,9 @@ input[type=range]{width:100%;accent-color:var(--gold)}
 .check{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--mute)}
 .check input{accent-color:var(--gold);width:18px;height:18px}
 .res-actions{display:grid;gap:10px;max-width:560px;width:100%;margin:4px auto 0}
+.sheetbox{max-width:560px;width:100%;margin:0 auto;font-size:13px;color:var(--mute)}
+.sheetbox summary{cursor:pointer;padding:8px 0}
+#sheet{width:100%;display:block;margin-top:8px;image-rendering:auto}
 .hint{font-size:12px;color:var(--mute);text-align:center;margin:0}
 @media (prefers-reduced-motion:reduce){#dot,#arrowUp{animation:none;transition:none}}
 </style>
@@ -167,10 +170,14 @@ input[type=range]{width:100%;accent-color:var(--gold)}
   <div class="ctrls">
     <div class="ctrl"><label for="kSharp">Nitidez</label><input type="range" id="kSharp" min="0" max="2" step="0.05" value="1"><output id="oSharp">1.0</output></div>
     <div class="ctrl"><label for="kClar">Textura</label><input type="range" id="kClar" min="0" max="1.5" step="0.05" value="0.6"><output id="oClar">0.6</output></div>
-    <div class="ctrl"><label for="kSat">Cor</label><input type="range" id="kSat" min="0.5" max="2" step="0.05" value="1.3"><output id="oSat">1.3</output></div>
+    <div class="ctrl"><label for="kSat">Cor</label><input type="range" id="kSat" min="0.5" max="2" step="0.05" value="1.15"><output id="oSat">1.15</output></div>
     <div class="ctrl"><label for="kCon">Contraste</label><input type="range" id="kCon" min="0.7" max="1.6" step="0.05" value="1.1"><output id="oCon">1.1</output></div>
     <label class="check"><input type="checkbox" id="kGlint" checked> Brilho de estúdio</label>
   </div>
+  <details class="sheetbox"><summary>Ver quadros capturados</summary>
+    <p class="hint">Verde: usado. Vermelho: descartado. Branco: onde o rastreador achou a íris. R = detector de rosto, T = rastreador. Número = encaixe com a referência.</p>
+    <canvas id="sheet"></canvas>
+  </details>
   <div class="res-actions">
     <button class="btn" id="btnSave">Salvar imagem</button>
     <p class="hint" id="saveHint">Se o botão não abrir, toque e segure na imagem pra salvar.</p>
@@ -339,7 +346,7 @@ function considerFrame(e){
   if (!sh) return;
   const key = "s" + S.step;
   const round = Math.min(e.rx,e.ry) / Math.max(e.rx,e.ry);
-  const f = { img, ox, oy, cx:e.cx, cy:e.cy, rx:e.rx, ry:e.ry, th:e.th, poly:e.poly.map(p => [p[0]-ox, p[1]-oy]), sharp:sh, round };
+  const f = { img, ox, oy, cx:e.cx, cy:e.cy, rx:e.rx, ry:e.ry, th:e.th, poly:e.poly.map(p => [p[0]-ox, p[1]-oy]), sharp:sh, round, tracked:!!e.tracked };
   const bin = S.bins.get(key) || [];
   if (bin.length >= PER_BIN && bin[bin.length-1].sharp >= sh) return;
   bin.push(f); bin.sort((a,b) => b.sharp - a.sharp);
@@ -361,13 +368,13 @@ const trkCtx = trkCv.getContext("2d", { willReadFrequently:true });
 const TR = 12; // raio da íris na imagem reduzida
 const RADII = [0.8, 0.9, 1, 1.1, 1.22].map(k => k*TR);
 const OFFS = RADII.map(rr => {
-  const inner = [], outer = [], ri = rr*0.85, ro0 = rr*1.1, ro1 = rr*1.5, R = Math.ceil(ro1);
+  const inner = [], left = [], right = [], ri = rr*0.85, ro0 = rr*1.1, ro1 = rr*1.5, R = Math.ceil(ro1);
   for (let y=-R; y<=R; y++) for (let x=-R; x<=R; x++){
     const d = Math.hypot(x, y);
     if (d <= ri) inner.push(x, y);
-    else if (d >= ro0 && d <= ro1 && Math.abs(y) < rr*0.5) outer.push(x, y);
+    else if (d >= ro0 && d <= ro1 && Math.abs(y) < rr*0.5) (x < 0 ? left : right).push(x, y);
   }
-  return { rr, inner, outer };
+  return { rr, inner, left, right };
 });
 
 function trackIris(prev, vw, vh){
@@ -391,10 +398,12 @@ function trackIris(prev, vw, vh){
       if (cy-lim < 0 || cy+lim >= n) continue;
       for (let cx = Math.round(c0-span); cx <= c0+span; cx++){
         if (cx-lim < 0 || cx+lim >= n) continue;
-        let si = 0, so = 0;
+        let si = 0, sl = 0, sr = 0;
         for (let k=0; k<o.inner.length; k+=2) si += g[(cy+o.inner[k+1])*n + cx+o.inner[k]];
-        for (let k=0; k<o.outer.length; k+=2) so += g[(cy+o.outer[k+1])*n + cx+o.outer[k]];
-        const score = so/(o.outer.length/2) - si/(o.inner.length/2);
+        for (let k=0; k<o.left.length; k+=2) sl += g[(cy+o.left[k+1])*n + cx+o.left[k]];
+        for (let k=0; k<o.right.length; k+=2) sr += g[(cy+o.right[k+1])*n + cx+o.right[k]];
+        // branco do olho dos DOIS lados: evita escorregar pra pupila ou pálpebra
+        const score = Math.min(sl/(o.left.length/2), sr/(o.right.length/2)) - si/(o.inner.length/2);
         if (score > best.score) best = { score, cx, cy, rr:o.rr };
       }
     }
@@ -473,7 +482,7 @@ function locateEye(res, vw, vh){
     };
     const t = trackIris(lmEye, vw, vh);
     if (t){ S.trkRef = t.score; S.light = t.light; }
-    S.track = { cx:lmEye.cx, cy:lmEye.cy, r:lmEye.r, at:now };
+    S.track = { cx:lmEye.cx, cy:lmEye.cy, r:lmEye.r, r0:lmEye.r, at:now };
     S.mode = "rosto";
     return lmEye;
   }
@@ -482,7 +491,8 @@ function locateEye(res, vw, vh){
     if (t && t.score > Math.max(0.06, (S.trkRef||0.15)*0.45)){
       // suaviza o raio pra não pular
       t.r = S.track.r*0.6 + t.r*0.4;
-      S.track = { cx:t.cx, cy:t.cy, r:t.r, at:now }; S.light = t.light;
+      if (S.track.r0) t.r = Math.min(S.track.r0*1.8, Math.max(S.track.r0*0.75, t.r));
+      S.track = { cx:t.cx, cy:t.cy, r:t.r, r0:S.track.r0, at:now }; S.light = t.light;
       S.mode = "rastreio";
       return eyeFromTrack(t, vw, vh);
     }
@@ -671,9 +681,10 @@ function prep(f){
   const lum = new Float32Array(W*H);
   for (let i=0, p=0; i<W*H; i++, p+=4) lum[i] = (0.2126*d[p] + 0.7152*d[p+1] + 0.0722*d[p+2]) / 255;
   Object.assign(f, { lum, W, H, c:[f.cx - f.ox, f.cy - f.oy], ex:[Math.cos(f.th), Math.sin(f.th)], ey:[-Math.sin(f.th), Math.cos(f.th)] });
+  f.c0 = [...f.c]; f.rx0 = f.rx; f.ry0 = f.ry;
   refine(f); refine(f);
-  buildLidMask(f);
   buildSpecMask(f);
+  buildLidMask(f);
 }
 
 function toCrop(f, u, v){
@@ -704,12 +715,12 @@ function normPoly(f, shrinkU=1, shrinkV=1){
 
 // Ajusta centro e raio da íris procurando a borda escura→clara (limbo) em raios.
 function refine(f){
-  const poly = normPoly(f, 0.97, 0.88);
   const pts = [];
   const S0 = 0.72, STEP = 0.011, NS = 60;
   const prof = new Float32Array(NS+1);
-  for (let a=0; a<360; a+=4){
+  for (let a=0; a<360; a+=3){
     const ca = Math.cos(a*D2R), sa = Math.sin(a*D2R);
+    if (Math.abs(sa) > 0.62) continue; // só os lados: em cima/embaixo tem pálpebra
     let bad = false;
     for (let k=0; k<=NS; k++){
       const s = S0 + k*STEP, [x,y] = toCrop(f, s*ca, s*sa);
@@ -723,9 +734,7 @@ function refine(f){
       if (g > best){ best = g; bs = S0 + k*STEP; }
     }
     if (bs < 0 || best < 0.04) continue;
-    const u = bs*ca, v = bs*sa;
-    if (!pointInPoly(poly, u, v)) continue;
-    pts.push([u, v]);
+    pts.push([bs*ca, bs*sa]);
   }
   if (pts.length < 10) return;
   let fit = circleFit(pts);
@@ -734,10 +743,11 @@ function refine(f){
   const med = [...res].sort((a,b)=>a-b)[res.length>>1];
   const keep = pts.filter((_, i) => res[i] <= Math.max(0.02, 2.2*med));
   if (keep.length >= 10) fit = circleFit(keep) || fit;
-  if (fit.R < 0.82 || fit.R > 1.22 || Math.abs(fit.a) > 0.22 || Math.abs(fit.b) > 0.22) return;
+  if (fit.R < 0.8 || fit.R > 1.25 || Math.abs(fit.a) > 0.25 || Math.abs(fit.b) > 0.25) return;
   f.c = toCrop(f, fit.a, fit.b);
   f.rx *= fit.R; f.ry *= fit.R;
 }
+
 function circleFit(pts){
   let su=0, sv=0, suu=0, svv=0, suv=0, sz=0, suz=0, svz=0; const n = pts.length;
   for (const [u,v] of pts){ const z = u*u+v*v; su+=u; sv+=v; suu+=u*u; svv+=v*v; suv+=u*v; sz+=z; suz+=u*z; svz+=v*z; }
@@ -753,21 +763,50 @@ function circleFit(pts){
 
 // Máscara da abertura do olho (fora dela é pálpebra/cílio).
 function buildLidMask(f){
-  const poly = normPoly(f, 0.97, 0.9), M = MASK_RES, m = new Uint8Array(M*M);
-  for (let j=0; j<M; j++){
-    const v = ((j+0.5)/M*2 - 1) * EXT, xs = [];
-    for (let i=0, k=poly.length-1; i<poly.length; k=i++){
-      const [ui,vi] = poly[i], [uk,vk] = poly[k];
-      if ((vi > v) !== (vk > v)) xs.push(ui + (v-vi)*(uk-ui)/(vk-vi));
-    }
-    xs.sort((a,b)=>a-b);
-    for (let p=0; p+1<xs.length; p+=2){
-      const i0 = Math.max(0, Math.ceil((xs[p]/EXT+1)/2*M - 0.5)), i1 = Math.min(M-1, Math.floor((xs[p+1]/EXT+1)/2*M - 0.5));
-      for (let i=i0; i<=i1; i++) m[j*M+i] = 1;
+  const M = MASK_RES, m = new Uint8Array(M*M), step = 2*EXT/M;
+  const at = (i, j) => ((i+0.5)/M*2 - 1) * EXT;
+  // tom típico da íris: anel médio, faixa central (longe de pupila e pálpebra)
+  const vals = [];
+  for (let j=0; j<M; j+=2) for (let i=0; i<M; i+=2){
+    const u = at(i), v = at(j), r = Math.hypot(u, v);
+    if (r < 0.45 || r > 0.9 || Math.abs(v) > 0.35) continue;
+    const l = specFreeLum(f, u, v); if (!Number.isNaN(l)) vals.push(l);
+  }
+  vals.sort((a,b)=>a-b);
+  const med = vals.length ? vals[vals.length>>1] : 0.3;
+  const hi = Math.min(0.97, med*1.55 + 0.1), lo = med*0.45;
+  const poly = f.tracked ? null : normPoly(f, 1.0, 1.0);
+  for (let i=0; i<M; i++){
+    const u = at(i);
+    if (Math.abs(u) > EXT) continue;
+    for (const dir of [-1, 1]){
+      let run = 0, cut = false;
+      for (let j = M/2 + (dir > 0 ? 0 : -1); j >= 0 && j < M; j += dir){
+        const v = at(j), r = Math.hypot(u, v);
+        if (r > EXT) break;
+        if (!cut){
+          const l = specFreeLum(f, u, v);
+          let bad = false;
+          if (Number.isNaN(l)) bad = f.specRaw(u, v) === 0 || r > 0.75; // fora do recorte, ou claro demais longe do centro
+          else bad = l > hi || (r > 0.5 && l < lo);
+          if (poly && !pointInPoly(poly, u, v)) bad = true;
+          run = bad ? run + 1 : 0;
+          if (run >= 3){ cut = true; for (let b=1; b<3; b++) m[(j - dir*b)*M + i] = 0; }
+        }
+        m[j*M + i] = cut ? 0 : 1;
+      }
     }
   }
   f.lid = m;
 }
+function specFreeLum(f, u, v){
+  const [x, y] = toCrop(f, u, v);
+  const xi = Math.round(x), yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= f.W || yi >= f.H) return NaN;
+  if (f.spec[yi*f.W + xi]) return NaN;
+  return lumAt(f, x, y);
+}
+
 function lidOK(f, u, v){
   const i = ((u/EXT + 1)/2*MASK_RES)|0, j = ((v/EXT + 1)/2*MASK_RES)|0;
   return i >= 0 && j >= 0 && i < MASK_RES && j < MASK_RES && f.lid[j*MASK_RES+i] === 1;
@@ -779,13 +818,13 @@ function buildSpecMask(f){
   for (let k=0; k<600; k++){
     const a = Math.random()*Math.PI*2, r = Math.sqrt(Math.random())*0.9;
     const u = r*Math.cos(a), v = r*Math.sin(a);
-    if (!lidOK(f,u,v)) continue;
+    if (Math.abs(v) > 0.45) continue;
     const [x,y] = toCrop(f,u,v), l = lumAt(f,x,y);
     if (!Number.isNaN(l)) vals.push(l);
   }
   vals.sort((a,b)=>a-b);
   const med = vals.length ? vals[vals.length>>1] : 0.3;
-  const thr = Math.min(0.93, Math.max(0.55, med*1.7 + 0.18));
+  const thr = Math.min(0.96, Math.max(0.8, med*2 + 0.3)); // só o reflexo quase estourado
   const bad = new Uint8Array(W*H);
   for (let i=0; i<W*H; i++) bad[i] = lum[i] > thr ? 1 : 0;
   const rad = Math.max(2, Math.round(0.05*f.rx));
@@ -798,6 +837,8 @@ function buildSpecMask(f){
     for (let y=0; y<H; y++){ if (tmp[y*W+x]) last = y; if (y-last <= rad) out[y*W+x] = 1; }
     last = 1e9; for (let y=H-1; y>=0; y--){ if (tmp[y*W+x]) last = y; if (last-y <= rad) out[y*W+x] = 1; } }
   f.spec = out; f.specThr = thr;
+  f.specRaw = (u, v) => { const [x,y] = toCrop(f,u,v); const xi = Math.round(x), yi = Math.round(y);
+    return (xi < 0 || yi < 0 || xi >= W || yi >= H) ? 0 : 1; };
 }
 
 // Transformação (no espaço normalizado da referência) → ponto no recorte do quadro f.
@@ -871,7 +912,10 @@ async function processFrames(frames){
     f.T = a.T; f.ncc = a.ncc; f.gain = Math.min(1.6, Math.max(0.6, a.gain));
     if (i % 2 === 0) await progress(0.22 + 0.33*i/frames.length);
   }
-  const used = frames.filter(f => f === ref || f.ncc > 0.45);
+  let used = frames.filter(f => f === ref || f.ncc > 0.3);
+  if (used.length < 6) used = [...frames].sort((a,b) => (b === ref) - (a === ref) || b.ncc - a.ncc).slice(0, Math.min(8, frames.length));
+  for (const f of frames) f.used = used.includes(f);
+  S.debugFrames = frames; S.debugRef = ref;
   for (const f of used) f.w = (f.sn**2) * (f.round**6) * (f === ref ? 1.3 : Math.max(0, f.ncc)**2) + 1e-6;
 
   // resolução final proporcional ao tamanho real da íris (≈2× super-resolução)
@@ -939,6 +983,7 @@ async function processFrames(frames){
   S.result = { N, R, G:Gc, B, frames:frames.length, used:used.length, holes:holes/NN };
   $("stats").textContent = `${used.length} de ${frames.length} quadros · íris de ${Math.round(2*rMed)} px · saída 1800 px`;
   await progress(1, "Pronto");
+  drawSheet();
   await render();
 }
 
@@ -960,10 +1005,13 @@ function pushPull(chs, W0, N){
     for (let y=0; y<n; y++) for (let x=0; x<n; x++){
       const o = y*n+x, w = Math.min(1, L.w[o]);
       if (w >= 1) continue;
-      const p = (y>>1)*m + (x>>1), cw = Math.max(1e-6, C.w[p]);
+      const fx = Math.min(m-1, Math.max(0, x/2 - 0.25)), fy = Math.min(m-1, Math.max(0, y/2 - 0.25));
+      const x0 = fx|0, y0 = fy|0, x1 = Math.min(m-1, x0+1), y1 = Math.min(m-1, y0+1), ax = fx-x0, ay = fy-y0;
+      const q = [[y0*m+x0,(1-ax)*(1-ay)],[y0*m+x1,ax*(1-ay)],[y1*m+x0,(1-ax)*ay],[y1*m+x1,ax*ay]];
       for (let k=0;k<3;k++){
-        const own = L.c[k][o], coarse = C.c[k][p]/cw;
-        L.c[k][o] = own + coarse*(1-w);
+        let cv = 0;
+        for (const [pi, wq] of q) cv += wq * C.c[k][pi] / Math.max(1e-6, C.w[pi]);
+        L.c[k][o] = L.c[k][o] + cv*(1-w);
       }
       L.w[o] = 1;
     }
@@ -1058,6 +1106,32 @@ async function render(){
   rendering = false;
   if (renderAgain){ renderAgain = false; render(); }
 }
+// Folha de contato: cada recorte com a íris detectada (verde = usado, vermelho = descartado).
+function drawSheet(){
+  const fr = S.debugFrames || [], cv = $("sheet"), T = 120, cols = 4;
+  cv.width = cols*T; cv.height = Math.ceil(fr.length/cols)*T;
+  const g = cv.getContext("2d"); g.fillStyle = "#000"; g.fillRect(0,0,cv.width,cv.height);
+  const tc = document.createElement("canvas");
+  fr.forEach((f, i) => {
+    const x = (i%cols)*T, y = Math.floor(i/cols)*T, sc = T / f.W;
+    tc.width = f.W; tc.height = f.H; tc.getContext("2d").putImageData(f.img, 0, 0);
+    g.drawImage(tc, x, y, T, T);
+    // máscara da pálpebra em vermelho translúcido
+    g.fillStyle = "rgba(255,40,40,.28)";
+    for (let j=0; j<MASK_RES; j+=4) for (let k=0; k<MASK_RES; k+=4){
+      if (f.lid[j*MASK_RES+k]) continue;
+      const u = ((k+0.5)/MASK_RES*2-1)*EXT, v = ((j+0.5)/MASK_RES*2-1)*EXT;
+      if (u*u+v*v > 1) continue;
+      const [px, py] = toCrop(f, u, v); g.fillRect(x + px*sc - 1, y + py*sc - 1, 2.5, 2.5);
+    }
+    g.lineWidth = 1.5;
+    g.strokeStyle = "rgba(255,255,255,.5)"; g.beginPath(); g.ellipse(x+f.c0[0]*sc, y+f.c0[1]*sc, f.rx0*sc, f.ry0*sc, f.th, 0, Math.PI*2); g.stroke();
+    g.strokeStyle = f.used ? "#8fd19e" : "#f0806c"; g.beginPath(); g.ellipse(x+f.c[0]*sc, y+f.c[1]*sc, f.rx*sc, f.ry*sc, f.th, 0, Math.PI*2); g.stroke();
+    g.fillStyle = "#fff"; g.font = "11px ui-monospace, monospace";
+    g.fillText(`${f === S.debugRef ? "REF " : ""}${f.tracked ? "T" : "R"} ${f.ncc != null ? f.ncc.toFixed(2) : ""}`, x+4, y+13);
+  });
+}
+
 const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
 const clamp255 = x => x <= 0 ? 0 : x >= 1 ? 255 : (x*255 + 0.5)|0;
 
