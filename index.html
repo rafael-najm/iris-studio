@@ -865,42 +865,76 @@ function circleFit(pts){
 
 // Máscara da abertura do olho (fora dela é pálpebra/cílio).
 function buildLidMask(f){
-  const M = MASK_RES, m = new Uint8Array(M*M), step = 2*EXT/M;
-  const at = (i, j) => ((i+0.5)/M*2 - 1) * EXT;
+  const M = MASK_RES, m = new Uint8Array(M*M);
+  const at = i => ((i+0.5)/M*2 - 1) * EXT;
+  const d = f.img.data;
+  const pix = (u, v) => {
+    const [x, y] = toCrop(f, u, v), xi = Math.round(x), yi = Math.round(y);
+    if (xi < 0 || yi < 0 || xi >= f.W || yi >= f.H) return null;
+    const p = (yi*f.W + xi)*4, l = f.lum[yi*f.W + xi];
+    return { l, warm: (d[p] - d[p+2]) / 255 / Math.max(0.05, l), spec: f.spec[yi*f.W + xi] === 1 };
+  };
   // tom típico da íris: anel médio, faixa central (longe de pupila e pálpebra)
-  const vals = [];
+  const ls = [], ws = [];
   for (let j=0; j<M; j+=2) for (let i=0; i<M; i+=2){
     const u = at(i), v = at(j), r = Math.hypot(u, v);
     if (r < 0.45 || r > 0.9 || Math.abs(v) > 0.35) continue;
-    const l = specFreeLum(f, u, v); if (!Number.isNaN(l)) vals.push(l);
+    const q = pix(u, v); if (q && !q.spec){ ls.push(q.l); ws.push(q.warm); }
   }
-  vals.sort((a,b)=>a-b);
-  const med = vals.length ? vals[vals.length>>1] : 0.3;
-  const hi = Math.min(0.97, med*1.55 + 0.1), lo = med*0.45;
+  const med = a => a.length ? [...a].sort((x,y)=>x-y)[a.length>>1] : 0.3;
+  const pct = (a, k) => a.length ? [...a].sort((x,y)=>x-y)[Math.floor(a.length*k)] : 0.5;
+  const lm = med(ls), wm = med(ws);
+  // íris clara (verde/azul) pode ser tão clara quanto pele: o limite sobe com ela
+  const hi = Math.min(0.97, Math.max(lm*1.3 + 0.1, pct(ls, 0.92) + 0.1)), lo = lm*0.45;
   const poly = f.tracked ? null : normPoly(f, 1.0, 1.0);
+  const bad = (u, v, r) => {
+    if (poly && !pointInPoly(poly, u, v)) return true;
+    const q = pix(u, v);
+    if (!q) return true;
+    if (q.spec) return r > 0.75;
+    if (q.l > hi) return true;
+    if (r > 0.5 && q.l < lo) return true;                    // cílios
+    if (q.l > lm*1.15 && q.warm > wm + 0.25) return true;     // pele: clara e mais quente que a íris
+    return false;
+  };
+  // grade de "não é íris" (pele, cílio, branco do olho, reflexo forte)
+  const B = new Uint8Array(M*M), inside = new Uint8Array(M*M);
+  for (let j=0; j<M; j++) for (let i=0; i<M; i++){
+    const u = at(i), v = at(j), r = Math.hypot(u, v);
+    if (r > EXT) continue;
+    inside[j*M+i] = 1; B[j*M+i] = bad(u, v, r) ? 1 : 0;
+  }
+  // em cada coluna, sobe e desce a partir do centro até achar a pálpebra.
+  // Uma mancha que acaba antes da borda é reflexo: só ela vira buraco, a coluna segue.
+  const top = new Float32Array(M), bot = new Float32Array(M);
   for (let i=0; i<M; i++){
-    const u = at(i);
-    if (Math.abs(u) > EXT) continue;
+    top[i] = 0; bot[i] = M-1;
+    if (Math.abs(at(i)) > EXT) continue;
     for (const dir of [-1, 1]){
-      let run = 0, cut = false;
-      for (let j = M/2 + (dir > 0 ? 0 : -1); j >= 0 && j < M; j += dir){
-        const v = at(j), r = Math.hypot(u, v);
-        if (r > EXT) break;
-        if (!cut){
-          const l = specFreeLum(f, u, v);
-          let bad = false;
-          if (Number.isNaN(l)) bad = f.specRaw(u, v) === 0 || r > 0.75; // fora do recorte, ou claro demais longe do centro
-          else bad = l > hi || (r > 0.5 && l < lo);
-          if (poly && !pointInPoly(poly, u, v)) bad = true;
-          run = bad ? run + 1 : 0;
-          if (run >= 3){ cut = true; for (let b=1; b<3; b++) m[(j - dir*b)*M + i] = 0; }
+      let run = 0;
+      for (let j = M/2 + (dir > 0 ? 0 : -1); j >= 0 && j < M && inside[j*M+i]; j += dir){
+        run = B[j*M+i] ? run + 1 : 0;
+        if (run < 5) continue;
+        let nb = 0, n = 0;
+        for (let t = j; t >= 0 && t < M && inside[t*M+i] && Math.hypot(at(i), at(t)) <= 1.0; t += dir){ n++; nb += B[t*M+i]; }
+        if (n === 0 || nb/n >= 0.6){
+          const edge = j - dir*run;
+          if (dir < 0) top[i] = edge + 1; else bot[i] = edge - 1;
+          break;
         }
-        m[j*M + i] = cut ? 0 : 1;
       }
     }
   }
+  // suaviza a borda entre colunas (mediana) pra não virar listras
+  const smoothArr = (a, win) => a.map((_, i) => {
+    const w = []; for (let k=-win; k<=win; k++){ const t = i+k; if (t >= 0 && t < M) w.push(a[t]); }
+    return w.sort((x,y)=>x-y)[w.length>>1];
+  });
+  const T = smoothArr(top, 7), Bt = smoothArr(bot, 7);
+  for (let i=0; i<M; i++) for (let j=Math.ceil(T[i]); j<=Math.floor(Bt[i]); j++) if (!B[j*M+i] || Math.hypot(at(i), at(j)) < 0.3) m[j*M + i] = 1;
   f.lid = m;
 }
+
 function specFreeLum(f, u, v){
   const [x, y] = toCrop(f, u, v);
   const xi = Math.round(x), yi = Math.round(y);
@@ -1022,7 +1056,7 @@ async function processFrames(frames){
   for (const f of used) f.w = (f.sn**2) * (f.round**4) * (f === ref ? 1 : Math.max(0, f.ncc)**8) + 1e-6;
   // "lucky imaging": a textura vem só dos quadros mais nítidos e mais bem encaixados;
   // os outros só tapam buracos (pálpebra, reflexo) onde os melhores não enxergam.
-  let core = used.filter(f => f === ref || f.ncc >= 0.75).sort((a,b) => b.w - a.w).slice(0, 12);
+  let core = used.filter(f => f === ref || f.ncc >= 0.6).sort((a,b) => b.w - a.w).slice(0, 12);
   if (core.length < 5) core = [...used].sort((a,b) => b.w - a.w).slice(0, Math.min(5, used.length));
   const rest = used.filter(f => !core.includes(f));
   for (const f of frames) f.core = core.includes(f);
@@ -1103,22 +1137,25 @@ async function processFrames(frames){
 
 // Balanço de branco: o branco do olho (dos lados da íris) deveria ser neutro.
 function whiteBalance(frames){
+  // só pixels claros e quase sem cor ao lado da íris: isso é o branco do olho, não pele
   const rs = [], gs = [], bs = [];
   for (const f of frames){
     const d = f.img.data;
-    for (let k=0; k<160; k++){
-      const side = k % 2 ? 1 : -1, u = side*(1.2 + Math.random()*0.3), v = (Math.random()-0.5)*0.5;
+    for (let k=0; k<240; k++){
+      const side = k % 2 ? 1 : -1, u = side*(1.12 + Math.random()*0.4), v = (Math.random()-0.5)*0.5;
       const [x, y] = toCrop(f, u, v), xi = Math.round(x), yi = Math.round(y);
       if (xi < 0 || yi < 0 || xi >= f.W || yi >= f.H || f.spec[yi*f.W+xi]) continue;
-      const p = (yi*f.W+xi)*4, l = f.lum[yi*f.W+xi];
-      if (l < 0.25) continue; // cílio, sombra
-      rs.push(d[p]); gs.push(d[p+1]); bs.push(d[p+2]);
+      const p = (yi*f.W+xi)*4, r = d[p], g = d[p+1], b = d[p+2];
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b);
+      if (mx < 110 || (mx - mn)/mx > 0.28) continue;
+      rs.push(r); gs.push(g); bs.push(b);
     }
   }
-  if (rs.length < 50) return [1,1,1];
+  if (rs.length < 80) return [1,1,1];
   const med = a => a.sort((x,y)=>x-y)[a.length>>1];
   const r = med(rs), g = med(gs), b = med(bs), m = (r+g+b)/3;
-  return [r, g, b].map(c => Math.min(1.5, Math.max(0.7, m/Math.max(1, c))));
+  // correção suave: no máximo 25% por canal
+  return [r, g, b].map(c => Math.min(1.25, Math.max(0.8, m/Math.max(1, c))));
 }
 
 // Preenche buracos puxando cor das regiões vizinhas (pirâmide push-pull).
