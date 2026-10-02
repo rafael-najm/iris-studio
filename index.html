@@ -118,11 +118,13 @@ input[type=range]{width:100%;accent-color:var(--gold)}
       <li><span class="n">01</span><span><b>Brilho no máximo.</b> A tela vira um anel de luz.</span></li>
       <li><span class="n">02</span><span><b>Celular a um palmo do olho.</b> O app avisa quando a distância estiver boa.</span></li>
       <li><span class="n">03</span><span><b>Siga a bolinha por uns 15 segundos.</b> Ele junta os melhores quadros de cada ângulo e apaga o reflexo.</span></li>
+      <li><span class="n">04</span><span><b>Quer ver as fibras da íris?</b> Use a câmera traseira de dia, perto de uma janela. Ela chega bem mais perto do olho, e a voz te guia.</span></li>
     </ul>
   </div>
   <div>
     <div class="actions">
       <button class="btn" id="btnStart">Começar</button>
+      <button class="btn ghost" id="btnRear">Câmera traseira · mais detalhe</button>
       <button class="btn ghost" id="btnVideo">Usar um vídeo gravado</button>
       <input type="file" id="fileVideo" accept="video/*" hidden>
     </div>
@@ -175,7 +177,7 @@ input[type=range]{width:100%;accent-color:var(--gold)}
     <label class="check"><input type="checkbox" id="kGlint" checked> Brilho de estúdio</label>
   </div>
   <details class="sheetbox"><summary>Ver quadros capturados</summary>
-    <p class="hint">Verde: usado. Vermelho: descartado. Branco: onde o rastreador achou a íris. R = detector de rosto, T = rastreador. Número = encaixe com a referência.</p>
+    <p class="hint">Verde: textura. Dourado: só tapa buracos. Vermelho: descartado. Branco: onde o rastreador achou a íris. R = detector de rosto, T = rastreador. Número = encaixe com a referência.</p>
     <canvas id="sheet"></canvas>
   </details>
   <div class="res-actions">
@@ -211,6 +213,14 @@ const STEPS = [
   { say:"De volta pra bolinha",           sub:"Segura firme",                pos:[50,3],  ms:2800 },
 ];
 
+const REAR_STEPS = [
+  { say:"Olhe reto pra câmera",  sub:"Segura firme",  pos:null, ms:3200, noArrow:true },
+  { say:"Olhe um pouco pra cima", sub:"",             pos:null, ms:2400 },
+  { say:"Pra esquerda",           sub:"",             pos:null, ms:2400, noArrow:true },
+  { say:"Pra direita",            sub:"",             pos:null, ms:2400, noArrow:true },
+  { say:"Um pouco pra baixo",     sub:"",             pos:null, ms:2200, noArrow:true },
+  { say:"Reto pra câmera de novo",sub:"",             pos:null, ms:3000, noArrow:true },
+];
 const S = {
   lm:null, stream:null, running:false, phase:"idle", source:"camera",
   eyePref:null, eyeLock:null, lastT:-1, lastSeen:0, goodSince:0,
@@ -223,7 +233,8 @@ const cropCtx = cropCv.getContext("2d", { willReadFrequently:true });
 /* ================= util ================= */
 function say(text, force=false){
   const now = performance.now();
-  if (!force && (text === S.lastSpoken || now - S.lastSpeakAt < 2200)) return;
+  const gap = S.cam === "rear" ? 1400 : 2200;
+  if (!force && ((text === S.lastSpoken && now - S.lastSpeakAt < gap*2.5) || now - S.lastSpeakAt < gap)) return;
   S.lastSpoken = text; S.lastSpeakAt = now;
   try {
     speechSynthesis.cancel();
@@ -412,6 +423,39 @@ function trackIris(prev, vw, vh){
   return { cx: sx + best.cx/s, cy: sy + best.cy/s, r: best.rr/s, score: best.score, light: mean };
 }
 
+// Procura a íris no quadro inteiro: disco escuro com branco do olho dos dois lados.
+// Usa imagem integral, então cada candidato custa O(1).
+const acqCv = document.createElement("canvas");
+const acqCtx = acqCv.getContext("2d", { willReadFrequently:true });
+function acquireIris(vw, vh){
+  const k = 180/Math.max(vw, vh), w = Math.round(vw*k), h = Math.round(vh*k);
+  if (acqCv.width !== w || acqCv.height !== h){ acqCv.width = w; acqCv.height = h; }
+  acqCtx.drawImage(video, 0, 0, w, h);
+  const d = acqCtx.getImageData(0, 0, w, h).data, I = new Float64Array((w+1)*(h+1));
+  for (let y=0; y<h; y++){ let row = 0;
+    for (let x=0; x<w; x++){ const p = (y*w+x)*4; row += Math.min(0.75, (0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2])/255);
+      I[(y+1)*(w+1)+x+1] = I[y*(w+1)+x+1] + row; } }
+  const box = (x0, y0, x1, y1) => {
+    x0 = Math.max(0, Math.round(x0)); y0 = Math.max(0, Math.round(y0)); x1 = Math.min(w, Math.round(x1)); y1 = Math.min(h, Math.round(y1));
+    const n = (x1-x0)*(y1-y0); if (n <= 0) return NaN;
+    return (I[y1*(w+1)+x1] - I[y0*(w+1)+x1] - I[y1*(w+1)+x0] + I[y0*(w+1)+x0]) / n;
+  };
+  let best = null;
+  for (let r = Math.min(w,h)*0.035; r <= Math.min(w,h)*0.32; r *= 1.12){
+    const st = Math.max(1, r/4);
+    for (let cy = r; cy < h - r; cy += st) for (let cx = r*1.6; cx < w - r*1.6; cx += st){
+      const inner = box(cx-0.65*r, cy-0.55*r, cx+0.65*r, cy+0.55*r);
+      const L = box(cx-1.55*r, cy-0.4*r, cx-1.12*r, cy+0.4*r), R = box(cx+1.12*r, cy-0.4*r, cx+1.55*r, cy+0.4*r);
+      if (Number.isNaN(L) || Number.isNaN(R)) continue;
+      const score = Math.min(L, R) - inner;
+      if (Math.min(L, R) > 0.35 && (!best || score > best.score)) best = { score, cx, cy, r };
+    }
+  }
+  if (!best || best.score < 0.2) return null;
+  return { cx: best.cx/k, cy: best.cy/k, r: best.r/k, score: best.score };
+}
+const DEFAULT_SHAPE = { k:0, th:0, ax:1, ay:1, poly: Array.from({ length:16 }, (_, i) => [2.2*Math.cos(i/16*Math.PI*2), 1.1*Math.sin(i/16*Math.PI*2)]) };
+
 // Monta o "olho" a partir do rastreador, reaproveitando o formato da última leitura do detector.
 function eyeFromTrack(t, vw, vh){
   const sh = S.shape, r = t.r;
@@ -434,7 +478,8 @@ function drawPreview(e){
   const W = view.width; if (!W) return;
   vctx.fillStyle = "#000"; vctx.fillRect(0,0,W,W);
   const vw = video.videoWidth, vh = video.videoHeight;
-  vctx.save(); vctx.translate(W,0); vctx.scale(-1,1); // espelho
+  const mirror = S.cam !== "rear";
+  vctx.save(); if (mirror){ vctx.translate(W,0); vctx.scale(-1,1); } // espelho na frontal
   if (e){
     const t = { x:e.cx, y:e.cy, h:Math.max(e.rx,e.ry)*1.7 };
     S.view = S.view ? { x:S.view.x*.7+t.x*.3, y:S.view.y*.7+t.y*.3, h:S.view.h*.7+t.h*.3 } : t;
@@ -442,10 +487,10 @@ function drawPreview(e){
     vctx.drawImage(video, v.x-v.h, v.y-v.h, 2*v.h, 2*v.h, 0, 0, W, W);
     vctx.restore();
     const sc = W/(2*v.h);
-    const px = W - (e.cx - (v.x - v.h))*sc, py = (e.cy - (v.y - v.h))*sc;
+    const px0 = (e.cx - (v.x - v.h))*sc, px = mirror ? W - px0 : px0, py = (e.cy - (v.y - v.h))*sc;
     vctx.strokeStyle = S.goodSince ? "rgba(143,209,158,.9)" : "rgba(255,255,255,.55)";
     vctx.lineWidth = Math.max(2, W/180);
-    vctx.beginPath(); vctx.ellipse(px, py, e.rx*sc*1.12, e.ry*sc*1.12, -e.th, 0, Math.PI*2); vctx.stroke();
+    vctx.beginPath(); vctx.ellipse(px, py, e.rx*sc*1.12, e.ry*sc*1.12, mirror ? -e.th : e.th, 0, Math.PI*2); vctx.stroke();
   } else {
     S.view = null;
     const s = Math.min(vw, vh);
@@ -488,14 +533,36 @@ function locateEye(res, vw, vh){
   }
   if (S.track && S.shape && now - S.track.at < 900){
     const t = trackIris(S.track, vw, vh);
-    if (t && t.score > Math.max(0.06, (S.trkRef||0.15)*0.45)){
+    if (t && t.score > Math.max(0.08, (S.trkRef||0.15)*0.45)){
       // suaviza o raio pra não pular
       t.r = S.track.r*0.6 + t.r*0.4;
       if (S.track.r0) t.r = Math.min(S.track.r0*1.8, Math.max(S.track.r0*0.75, t.r));
+      if (S.track.r0 && S.shape === DEFAULT_SHAPE) S.track.r0 = S.track.r0*0.97 + t.r*0.03;
       S.track = { cx:t.cx, cy:t.cy, r:t.r, r0:S.track.r0, at:now }; S.light = t.light;
       S.mode = "rastreio";
       return eyeFromTrack(t, vw, vh);
     }
+  }
+  // sem rosto e sem rastreio: procura a íris no quadro todo (é o caso da câmera traseira, coladinha no olho)
+  S.acqTick = (S.acqTick || 0) + 1;
+  if (S.acqTick % 3 === 0){
+    const a = acquireIris(vw, vh);
+    if (a){
+      const prev = S.acqCand;
+      if (prev && Math.hypot(a.cx-prev.cx, a.cy-prev.cy) < a.r*0.5 && Math.abs(a.r/prev.r - 1) < 0.25) S.acqHits = (S.acqHits||0) + 1;
+      else S.acqHits = 1;
+      S.acqCand = a;
+      if (S.acqHits >= 2){
+        const t = trackIris(a, vw, vh);
+        if (t){
+          if (!S.shape) S.shape = DEFAULT_SHAPE;
+          S.trkRef = t.score;
+          S.track = { cx:t.cx, cy:t.cy, r:t.r, r0:t.r, at:now };
+          S.mode = "achei";
+          return eyeFromTrack(t, vw, vh);
+        }
+      }
+    } else S.acqHits = 0;
   }
   S.mode = "nada";
   return null;
@@ -514,12 +581,14 @@ function onDetect(res){
 
   if (S.phase === "setup"){
     drawPreview(e);
-    const good = 0.042*minDim, okR = 0.03*minDim;
+    const rear = S.cam === "rear";
+    const good = (rear ? 0.1 : 0.042)*minDim, okR = (rear ? 0.06 : 0.03)*minDim;
     if (!e){
       S.goodSince = 0; $("btnScan").disabled = true; setMeter(0);
       let msg, sub;
       if (S.light != null && S.light < 0.12){ msg = "Tá escuro demais"; sub = "Acenda a luz do quarto"; }
       else if (S.lastSeen && now - S.lastSeen < 4000){ msg = "Perdi seu olho"; sub = "Afaste até o rosto aparecer e aproxime devagar"; }
+      else if (rear){ msg = "Aponte a câmera pro olho"; sub = "Câmera de trás virada pra você, a um palmo. Aproxime devagar"; }
       else { msg = "Mostre o rosto inteiro"; sub = "Comece com o celular longe e vá aproximando devagar"; }
       setHud(msg, sub); say(msg);
       return;
@@ -541,23 +610,43 @@ function onDetect(res){
     if (!e || now < S.collectAfter) return;
     if (S.eyeLock === null) S.eyeLock = e.k;
     if (S.source === "file") S.step = video.duration ? Math.floor(video.currentTime/video.duration*8) : 0;
-    const minR = (S.source === "file" ? 0.018 : 0.026) * minDim;
+    const minR = (S.source === "file" ? 0.018 : S.cam === "rear" ? 0.05 : 0.026) * minDim;
     if (e.inFrame && e.r >= minR && e.open >= 0.5) considerFrame(e);
   }
 }
 
 /* ================= fluxo ================= */
-async function startCamera(){
+// Na traseira, prefere a câmera virtual "tripla"/"dupla grande-angular" (troca sozinha pro macro nos iPhones Pro)
+// e senão a ultra-angular, que foca mais perto.
+async function openRear(){
+  let stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ facingMode:{ exact:"environment" }, width:{ ideal:3840 }, height:{ ideal:2160 } } });
+  try {
+    const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+    const back = devs.filter(d => !/front|frontal|facetime/i.test(d.label));
+    const pick = back.find(d => /tripl/i.test(d.label)) || back.find(d => /dual wide|dupla.*(grande|wide)|grande.angular dupla/i.test(d.label))
+      || back.find(d => /ultra/i.test(d.label));
+    const cur = stream.getVideoTracks()[0]?.getSettings().deviceId;
+    if (pick && pick.deviceId !== cur){
+      stream.getTracks().forEach(t => t.stop());
+      stream = await navigator.mediaDevices.getUserMedia({ audio:false, video:{ deviceId:{ exact:pick.deviceId }, width:{ ideal:3840 }, height:{ ideal:2160 } } });
+    }
+    S.camLabel = pick?.label || "traseira";
+  } catch {}
+  return stream;
+}
+
+async function startCamera(which = "front"){
   $("introErr").hidden = true;
   say(" ", true); // destrava a voz no iOS (precisa de toque)
   $("btnStart").disabled = true; $("btnStart").textContent = "Abrindo câmera…";
   try {
-    S.stream = await navigator.mediaDevices.getUserMedia({
+    S.stream = which === "rear" ? await openRear() : await navigator.mediaDevices.getUserMedia({
       audio:false,
       video:{ facingMode:"user", width:{ ideal:3840 }, height:{ ideal:2160 }, frameRate:{ ideal:30 } },
     });
+    S.cam = which;
   } catch (err){
-    $("btnStart").disabled = false; $("btnStart").textContent = "Começar";
+    $("btnStart").disabled = false; $("btnStart").textContent = "Começar"; S.cam = null;
     $("introErr").textContent = location.protocol !== "https:" && location.hostname !== "localhost"
       ? "A câmera só funciona em uma página https. Publique o arquivo num endereço https e abra de novo."
       : "Não consegui abrir a câmera. Libere o acesso em Ajustes › Safari › Câmera e tente de novo.";
@@ -609,14 +698,15 @@ async function startCapture(){
   $("stage").classList.remove("full");
   S.collectAfter = performance.now() + 700;
   const dot = $("dot"), up = $("arrowUp"), prog = $("prog");
-  const total = STEPS.reduce((s,x) => s + x.ms, 0);
+  const steps = S.cam === "rear" ? REAR_STEPS : STEPS;
+  const total = steps.reduce((s,x) => s + x.ms, 0);
   let elapsed = 0;
-  for (const [i, st] of STEPS.entries()){
+  for (const [i, st] of steps.entries()){
     if (S.phase !== "capture") return;
     S.step = i;
     setHud(st.say, st.sub); say(st.say, true);
     if (st.pos){ dot.hidden = false; up.hidden = true; dot.style.left = st.pos[0]+"vw"; dot.style.top = st.pos[1]+"vh"; dot.classList.add("pulse"); }
-    else { dot.hidden = true; up.hidden = false; }
+    else { dot.hidden = true; up.hidden = !!st.noArrow; }
     await sleep(st.ms);
     elapsed += st.ms; prog.style.width = (elapsed/total*100) + "%";
   }
@@ -890,6 +980,7 @@ function align(ref, f, refPts){
   search(0, 0, 0, 0.04, 3);
   search(best.T.dx, best.T.dy, best.T.rot, 0.015, 1.2);
   search(best.T.dx, best.T.dy, best.T.rot, 0.006, 0.5);
+  search(best.T.dx, best.T.dy, best.T.rot, 0.0025, 0.2);
   return best;
 }
 
@@ -928,15 +1019,21 @@ async function processFrames(frames){
   if (used.length < 6) used = [...frames].sort((a,b) => (b === ref) - (a === ref) || b.ncc - a.ncc).slice(0, Math.min(8, frames.length));
   for (const f of frames) f.used = used.includes(f);
   S.debugFrames = frames; S.debugRef = ref;
-  for (const f of used) f.w = (f.sn**2) * (f.round**6) * (f === ref ? 1.3 : Math.max(0, f.ncc)**2) + 1e-6;
+  for (const f of used) f.w = (f.sn**2) * (f.round**4) * (f === ref ? 1 : Math.max(0, f.ncc)**8) + 1e-6;
+  // "lucky imaging": a textura vem só dos quadros mais nítidos e mais bem encaixados;
+  // os outros só tapam buracos (pálpebra, reflexo) onde os melhores não enxergam.
+  let core = used.filter(f => f === ref || f.ncc >= 0.75).sort((a,b) => b.w - a.w).slice(0, 12);
+  if (core.length < 5) core = [...used].sort((a,b) => b.w - a.w).slice(0, Math.min(5, used.length));
+  const rest = used.filter(f => !core.includes(f));
+  for (const f of frames) f.core = core.includes(f);
 
   // resolução final proporcional ao tamanho real da íris (≈2× super-resolução)
   const rMed = used.map(f => (f.rx+f.ry)/2).sort((a,b)=>a-b)[used.length>>1];
-  const N = Math.max(400, Math.min(1100, Math.round(4*EXT*rMed)));
+  const N = Math.max(480, Math.min(1200, Math.round(5*EXT*rMed)));
   const NN = N*N;
 
   const acc = new Float32Array(NN*3), wsum = new Float32Array(NN), lsq = new Float32Array(NN);
-  const sample = (f, pass, mean, sigma) => {
+  const sample = (f, pass, mean, sigma, holeMask) => {
     const d = f.img.data, W = f.W, g = f.gain/255;
     for (let j=0; j<N; j++){
       const v = ((j+0.5)/N*2-1)*EXT;
@@ -956,6 +1053,7 @@ async function processFrames(frames){
         const b = (d[p+2]*w00 + d[p+6]*w10 + d[q+2]*w01 + d[q+6]*w11)*g;
         const l = 0.2126*r + 0.7152*gg + 0.0722*b;
         const o = j*N+i;
+        if (pass === 3 && !holeMask[o]) continue;
         let w = f.w;
         if (pass === 2){
           if (mean[o] < 0) continue;
@@ -968,7 +1066,7 @@ async function processFrames(frames){
   };
 
   await progress(0.56, "Empilhando os quadros");
-  for (let i=0; i<used.length; i++){ sample(used[i], 1); if (i % 2 === 0) await progress(0.56 + 0.17*i/used.length); }
+  for (let i=0; i<core.length; i++){ sample(core[i], 1); await progress(0.56 + 0.17*i/core.length); }
   const mean = new Float32Array(NN), sigma = new Float32Array(NN);
   for (let o=0; o<NN; o++){
     const w = wsum[o];
@@ -979,11 +1077,15 @@ async function processFrames(frames){
 
   await progress(0.74, "Tirando o reflexo");
   acc.fill(0); wsum.fill(0);
-  for (let i=0; i<used.length; i++){ sample(used[i], 2, mean, sigma); if (i % 2 === 0) await progress(0.74 + 0.16*i/used.length); }
+  for (let i=0; i<core.length; i++){ sample(core[i], 2, mean, sigma); await progress(0.74 + 0.1*i/core.length); }
+  // tapa buracos com os quadros de reserva
+  const holeMask = new Uint8Array(NN);
+  for (let o=0; o<NN; o++) holeMask[o] = wsum[o] < 1e-9 ? 1 : 0;
+  for (let i=0; i<rest.length; i++){ sample(rest[i], 3, null, null, holeMask); if (i % 3 === 0) await progress(0.84 + 0.07*i/Math.max(1, rest.length)); }
 
   await progress(0.92, "Preenchendo os vazios");
   const R = new Float32Array(NN), Gc = new Float32Array(NN), B = new Float32Array(NN), Wt = new Float32Array(NN);
-  const wRef = Math.max(...used.map(f => f.w)) * 0.5;
+  const wRef = Math.max(...core.map(f => f.w)) * 0.3;
   let holes = 0;
   for (let o=0; o<NN; o++){
     const w = wsum[o];
@@ -993,7 +1095,7 @@ async function processFrames(frames){
   pushPull([R, Gc, B], Wt, N);
 
   S.result = { N, R, G:Gc, B, frames:frames.length, used:used.length, holes:holes/NN, wb:whiteBalance(used) };
-  $("stats").textContent = `${used.length} de ${frames.length} quadros · íris de ${Math.round(2*rMed)} px · saída 1800 px`;
+  $("stats").textContent = `${core.length} nítidos + ${rest.length} de reserva · íris de ${Math.round(2*rMed)} px na câmera`;
   await progress(1, "Pronto");
   drawSheet();
   await render();
@@ -1158,7 +1260,7 @@ function drawSheet(){
     }
     g.lineWidth = 1.5;
     g.strokeStyle = "rgba(255,255,255,.5)"; g.beginPath(); g.ellipse(x+f.c0[0]*sc, y+f.c0[1]*sc, f.rx0*sc, f.ry0*sc, f.th, 0, Math.PI*2); g.stroke();
-    g.strokeStyle = f.used ? "#8fd19e" : "#f0806c"; g.beginPath(); g.ellipse(x+f.c[0]*sc, y+f.c[1]*sc, f.rx*sc, f.ry*sc, f.th, 0, Math.PI*2); g.stroke();
+    g.strokeStyle = f.core ? "#8fd19e" : f.used ? "#d9b46a" : "#f0806c"; g.beginPath(); g.ellipse(x+f.c[0]*sc, y+f.c[1]*sc, f.rx*sc, f.ry*sc, f.th, 0, Math.PI*2); g.stroke();
     g.fillStyle = "#fff"; g.font = "11px ui-monospace, monospace";
     g.fillText(`${f === S.debugRef ? "REF " : ""}${f.tracked ? "T" : "R"} ${f.ncc != null ? f.ncc.toFixed(2) : ""}`, x+4, y+13);
   });
@@ -1179,7 +1281,8 @@ async function save(){
 }
 
 /* ================= eventos ================= */
-$("btnStart").onclick = startCamera;
+$("btnStart").onclick = () => startCamera("front");
+$("btnRear").onclick = () => startCamera("rear");
 $("btnVideo").onclick = () => $("fileVideo").click();
 $("fileVideo").onchange = e => { const f = e.target.files?.[0]; if (f) startFromFile(f); e.target.value = ""; };
 $("btnScan").onclick = () => startCapture();
