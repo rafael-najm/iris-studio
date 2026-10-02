@@ -1,0 +1,1102 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#000000">
+<title>Íris Estúdio</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bodoni+Moda:ital,opsz,wght@0,6..96,400;1,6..96,400&family=Manrope:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: um palco preto de tela cheia. A própria tela é a fonte de luz (anel branco), então o resto fica preto. */
+:root{
+  --ink:#000;           /* fundo: preto absoluto, evita reflexos extras no olho */
+  --paper:#f4efe6;      /* texto principal, branco quente */
+  --mute:#8d877d;       /* texto secundário */
+  --line:#2a2722;       /* divisórias e trilhos */
+  --gold:#d9b46a;       /* acento: dourado de íris âmbar */
+  --ok:#8fd19e;         /* estado "pronto" */
+  --light:#ffffff;      /* o anel de luz */
+  --f-display:"Bodoni Moda", "Didot", Georgia, serif;
+  --f-body:"Manrope", system-ui, -apple-system, sans-serif;
+  --f-mono:"JetBrains Mono", ui-monospace, Menlo, monospace;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:var(--ink);color:var(--paper);font-family:var(--f-body);-webkit-font-smoothing:antialiased}
+body{overflow:hidden;touch-action:manipulation;-webkit-user-select:none;user-select:none}
+button{font:inherit;color:inherit;cursor:pointer}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:3px}
+[hidden]{display:none!important}
+
+.screen{position:fixed;inset:0;display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top,0px) + 20px) 20px calc(env(safe-area-inset-bottom,0px) + 20px)}
+
+/* ---------- Intro ---------- */
+#intro{justify-content:space-between;overflow-y:auto}
+.mark{font-family:var(--f-display);font-weight:400;font-size:clamp(84px,30vw,150px);line-height:.9;letter-spacing:-.02em;margin:6vh 0 0}
+.mark em{font-style:italic;color:var(--gold)}
+.lede{font-size:17px;line-height:1.5;color:var(--paper);max-width:32ch;margin:18px 0 0;text-wrap:balance}
+.how{list-style:none;padding:0;margin:28px 0 0;display:grid;gap:14px;max-width:36ch}
+.how li{display:grid;grid-template-columns:28px 1fr;gap:10px;font-size:15px;line-height:1.45;color:var(--mute)}
+.how b{color:var(--paper);font-weight:600}
+.how span.n{font-family:var(--f-mono);font-size:12px;color:var(--gold);padding-top:3px}
+.actions{display:grid;gap:10px;margin-top:28px}
+.btn{border:0;border-radius:999px;padding:17px 22px;font-weight:700;font-size:16px;background:var(--paper);color:#000}
+.btn.ghost{background:transparent;color:var(--paper);border:1px solid var(--line)}
+.btn:disabled{opacity:.4}
+.fine{font-size:12px;color:var(--mute);line-height:1.5;margin:14px 0 0}
+.err{color:#f0a08c;font-size:14px;line-height:1.45;margin:12px 0 0}
+
+/* ---------- Palco de captura ---------- */
+#stage{padding:0;align-items:center;justify-content:center}
+#stage.full{background:var(--light)}
+.ring{position:absolute;left:50%;top:36%;width:min(94vw,60vh);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;
+  border:min(9vw,7vh) solid var(--light);box-shadow:0 0 50px 10px rgba(255,255,255,.55),inset 0 0 50px 10px rgba(255,255,255,.45);pointer-events:none}
+#stage.full .ring{box-shadow:none}
+.eyewrap{position:absolute;left:50%;top:36%;width:min(64vw,40vh);aspect-ratio:1;transform:translate(-50%,-50%);border-radius:50%;overflow:hidden;background:#000}
+#eyeView{width:100%;height:100%;display:block}
+.hud{position:absolute;left:0;right:0;bottom:0;padding:0 20px calc(env(safe-area-inset-bottom,0px) + 18px);display:grid;gap:12px;justify-items:center;text-align:center}
+#stage.full .hud{color:#000}
+.say{font-family:var(--f-display);font-size:clamp(26px,7.4vw,40px);line-height:1.1;margin:0;text-wrap:balance;min-height:1.1em}
+.sub{font-size:14px;color:var(--mute);margin:0;min-height:1.4em}
+#stage.full .sub{color:#555}
+.meter{width:min(280px,70vw);height:4px;border-radius:2px;background:var(--line);overflow:hidden}
+.meter i{display:block;height:100%;width:0;background:var(--paper);transition:width .2s,background .2s}
+.meter.good i{background:var(--ok)}
+.row{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.chip{border:1px solid var(--line);background:rgba(0,0,0,.65);border-radius:999px;padding:10px 14px;font-size:13px;font-weight:600}
+#stage.full .chip{background:#fff;border-color:#ccc;color:#000}
+.chip.go{background:var(--paper);color:#000;border-color:var(--paper)}
+#dot{position:absolute;width:26px;height:26px;margin:-13px 0 0 -13px;border-radius:50%;background:var(--gold);box-shadow:0 0 0 6px rgba(217,180,106,.25),0 0 24px rgba(217,180,106,.9);
+  transition:left .55s cubic-bezier(.6,0,.2,1),top .55s cubic-bezier(.6,0,.2,1);z-index:3}
+#dot.pulse{animation:pulse 1s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(.7)}}
+#arrowUp{position:absolute;left:50%;top:calc(env(safe-area-inset-top,0px) + 8px);transform:translateX(-50%);font-size:44px;color:var(--gold);z-index:3;animation:bob 1s ease-in-out infinite}
+@keyframes bob{50%{transform:translate(-50%,-8px)}}
+.top{position:absolute;top:calc(env(safe-area-inset-top,0px) + 14px);left:16px;right:16px;display:flex;justify-content:space-between;z-index:4}
+.diag{position:absolute;top:calc(env(safe-area-inset-top,0px) + 58px);left:0;right:0;text-align:center;margin:0;font-family:var(--f-mono);font-size:10px;color:var(--mute);z-index:4}
+#stage.full .diag{color:#666}
+.prog{position:absolute;left:0;bottom:0;height:3px;background:var(--gold);width:0;transition:width .3s linear;z-index:4}
+
+/* ---------- Processando ---------- */
+#proc{align-items:center;justify-content:center;text-align:center;gap:18px}
+.spin{width:min(56vw,240px);aspect-ratio:1;border-radius:50%;background:conic-gradient(var(--gold) var(--p,0%),var(--line) 0);display:grid;place-items:center;
+  -webkit-mask:radial-gradient(circle,transparent 63%,#000 64%);mask:radial-gradient(circle,transparent 63%,#000 64%)}
+.procnum{font-family:var(--f-mono);font-size:13px;color:var(--mute);margin:0}
+
+/* ---------- Resultado ---------- */
+#result{overflow-y:auto;gap:18px;padding-top:calc(env(safe-area-inset-top,0px) + 12px)}
+.res-head{display:flex;justify-content:space-between;align-items:baseline}
+.res-head h2{font-family:var(--f-display);font-weight:400;font-size:34px;margin:0}
+.res-head h2 em{color:var(--gold)}
+#outImg{width:100%;max-width:560px;aspect-ratio:1;margin:0 auto;display:block;background:#000;-webkit-user-select:auto;user-select:auto;-webkit-touch-callout:default}
+.stats{font-family:var(--f-mono);font-size:11px;color:var(--mute);text-align:center;letter-spacing:.04em;margin:0;font-variant-numeric:tabular-nums}
+.ctrls{display:grid;gap:14px;max-width:560px;width:100%;margin:0 auto}
+.ctrl{display:grid;grid-template-columns:86px 1fr 38px;align-items:center;gap:10px;font-size:13px}
+.ctrl label{color:var(--mute);text-transform:uppercase;letter-spacing:.08em;font-size:11px}
+.ctrl output{font-family:var(--f-mono);font-size:11px;text-align:right;color:var(--mute)}
+input[type=range]{width:100%;accent-color:var(--gold)}
+.check{display:flex;gap:10px;align-items:center;font-size:14px;color:var(--mute)}
+.check input{accent-color:var(--gold);width:18px;height:18px}
+.res-actions{display:grid;gap:10px;max-width:560px;width:100%;margin:4px auto 0}
+.hint{font-size:12px;color:var(--mute);text-align:center;margin:0}
+@media (prefers-reduced-motion:reduce){#dot,#arrowUp{animation:none;transition:none}}
+</style>
+</head>
+<body>
+
+<!-- INTRO -->
+<section id="intro" class="screen">
+  <div>
+    <h1 class="mark">Í<em>r</em>is</h1>
+    <p class="lede">Uma foto da sua íris em alta resolução, feita com a câmera frontal e a tela como luz.</p>
+    <ul class="how">
+      <li><span class="n">01</span><span><b>Brilho no máximo.</b> A tela vira um anel de luz.</span></li>
+      <li><span class="n">02</span><span><b>Celular a um palmo do olho.</b> O app avisa quando a distância estiver boa.</span></li>
+      <li><span class="n">03</span><span><b>Siga a bolinha por uns 15 segundos.</b> Ele junta os melhores quadros de cada ângulo e apaga o reflexo.</span></li>
+    </ul>
+  </div>
+  <div>
+    <div class="actions">
+      <button class="btn" id="btnStart">Começar</button>
+      <button class="btn ghost" id="btnVideo">Usar um vídeo gravado</button>
+      <input type="file" id="fileVideo" accept="video/*" hidden>
+    </div>
+    <p class="err" id="introErr" hidden></p>
+    <p class="fine">Tudo é processado no próprio celular. Nenhuma imagem sai do aparelho.</p>
+  </div>
+</section>
+
+<!-- PALCO -->
+<section id="stage" class="screen full" hidden>
+  <div class="ring"></div>
+  <div class="eyewrap" id="eyeWrap"><canvas id="eyeView"></canvas></div>
+  <div id="dot" hidden></div>
+  <div id="arrowUp" hidden>↑</div>
+  <div class="top">
+    <button class="chip" id="btnCancel">Cancelar</button>
+    <button class="chip" id="btnLight">Luz: tela</button>
+  </div>
+  <p class="diag" id="diagLine"></p>
+  <div class="hud">
+    <p class="say" id="say">Carregando…</p>
+    <p class="sub" id="sub"></p>
+    <div class="meter" id="meter"><i></i></div>
+    <div class="row" id="setupBtns">
+      <button class="chip" id="btnSwap">Trocar olho</button>
+      <button class="chip go" id="btnScan" disabled>Escanear agora</button>
+      <button class="chip go" id="btnRetry" hidden>Tentar de novo</button>
+    </div>
+  </div>
+  <div class="prog" id="prog"></div>
+</section>
+
+<!-- PROCESSANDO -->
+<section id="proc" class="screen" hidden>
+  <div class="spin" id="spin"></div>
+  <p class="say" id="procTxt">Montando sua íris</p>
+  <p class="procnum" id="procNum"></p>
+</section>
+
+<!-- RESULTADO -->
+<section id="result" class="screen" hidden>
+  <div class="res-head"><h2>Sua <em>íris</em></h2><button class="chip" id="btnAgain">Escanear de novo</button></div>
+  <img id="outImg" alt="Imagem da íris em fundo preto">
+  <p class="stats" id="stats"></p>
+  <div class="ctrls">
+    <div class="ctrl"><label for="kSharp">Nitidez</label><input type="range" id="kSharp" min="0" max="2" step="0.05" value="1"><output id="oSharp">1.0</output></div>
+    <div class="ctrl"><label for="kClar">Textura</label><input type="range" id="kClar" min="0" max="1.5" step="0.05" value="0.6"><output id="oClar">0.6</output></div>
+    <div class="ctrl"><label for="kSat">Cor</label><input type="range" id="kSat" min="0.5" max="2" step="0.05" value="1.3"><output id="oSat">1.3</output></div>
+    <div class="ctrl"><label for="kCon">Contraste</label><input type="range" id="kCon" min="0.7" max="1.6" step="0.05" value="1.1"><output id="oCon">1.1</output></div>
+    <label class="check"><input type="checkbox" id="kGlint" checked> Brilho de estúdio</label>
+  </div>
+  <div class="res-actions">
+    <button class="btn" id="btnSave">Salvar imagem</button>
+    <p class="hint" id="saveHint">Se o botão não abrir, toque e segure na imagem pra salvar.</p>
+  </div>
+</section>
+
+<video id="video" playsinline muted autoplay style="position:fixed;left:0;top:0;width:2px;height:2px;opacity:0;pointer-events:none"></video>
+
+<script type="module">
+import { FaceLandmarker, FilesetResolver } from "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+
+const $ = id => document.getElementById(id);
+const D2R = Math.PI / 180;
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+const tick = () => new Promise(r => requestAnimationFrame(() => r()));
+
+// Índices do Face Mesh: íris (centro + 4 bordas), cantos, pálpebras e contorno de cada olho.
+const EYES = [
+  { iris:[468,469,470,471,472], corners:[33,133], lids:[159,145],
+    contour:[33,7,163,144,145,153,154,155,133,173,157,158,159,160,161,246] },
+  { iris:[473,474,475,476,477], corners:[263,362], lids:[386,374],
+    contour:[263,249,390,373,374,380,381,382,362,398,384,385,386,387,388,466] },
+];
+
+const STEPS = [
+  { say:"Olhe pra bolinha",              sub:"Bem pertinho da câmera",      pos:[50,3],  ms:3000 },
+  { say:"Agora olhe pra cima",            sub:"Um pouco acima do celular",   pos:null,    ms:2400 },
+  { say:"Pra esquerda",                   sub:"Siga a bolinha",              pos:[7,24],  ms:2400 },
+  { say:"Pra direita",                    sub:"Siga a bolinha",              pos:[93,24], ms:2400 },
+  { say:"Um pouco pra baixo",             sub:"Siga a bolinha",              pos:[50,62], ms:2200 },
+  { say:"De volta pra bolinha",           sub:"Segura firme",                pos:[50,3],  ms:2800 },
+];
+
+const S = {
+  lm:null, stream:null, running:false, phase:"idle", source:"camera",
+  eyePref:null, eyeLock:null, lastT:-1, lastSeen:0, goodSince:0,
+  bins:new Map(), nFrames:0, view:null, lastSpoken:"", lastSpeakAt:0, wake:null, result:null,
+};
+const video = $("video");
+const cropCv = document.createElement("canvas");
+const cropCtx = cropCv.getContext("2d", { willReadFrequently:true });
+
+/* ================= util ================= */
+function say(text, force=false){
+  const now = performance.now();
+  if (!force && (text === S.lastSpoken || now - S.lastSpeakAt < 2200)) return;
+  S.lastSpoken = text; S.lastSpeakAt = now;
+  try {
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(text);
+    u.lang = "pt-BR"; u.rate = 1.05;
+    speechSynthesis.speak(u);
+  } catch {}
+}
+function show(id){
+  for (const s of ["intro","stage","proc","result"]) $(s).hidden = s !== id;
+}
+function setHud(main, sub=""){ $("say").textContent = main; $("sub").textContent = sub; }
+function setMeter(f, good){
+  $("meter").firstElementChild.style.width = Math.max(0, Math.min(1, f)) * 100 + "%";
+  $("meter").classList.toggle("good", !!good);
+}
+async function keepAwake(){ try { S.wake = await navigator.wakeLock?.request("screen"); } catch {} }
+
+/* ================= modelo ================= */
+let modelPromise = null;
+function loadModel(){
+  if (!modelPromise) modelPromise = createModel().catch(err => { modelPromise = null; throw err; });
+  return modelPromise;
+}
+async function createModel(){
+  const base = "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm";
+  const model = "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task";
+  // baixa o modelo uma vez só (com timeout) e passa os bytes direto
+  let buf = S.modelBuf;
+  if (!buf){
+    const ctl = new AbortController(), to = setTimeout(() => ctl.abort(), 30000);
+    try {
+      const r = await fetch(model, { signal:ctl.signal });
+      if (!r.ok) throw new Error("modelo HTTP " + r.status);
+      buf = S.modelBuf = new Uint8Array(await r.arrayBuffer());
+    } catch (e){ throw new Error("download do modelo falhou (" + (e.name === "AbortError" ? "tempo esgotado" : e.message) + ")"); }
+    finally { clearTimeout(to); }
+  }
+  let files;
+  try { files = await FilesetResolver.forVisionTasks(base); }
+  catch (e){ throw new Error("wasm não carregou (" + (e?.message || e) + ")"); }
+  const opts = delegate => ({
+    baseOptions:{ modelAssetBuffer:buf, delegate },
+    runningMode:"VIDEO", numFaces:1, minFaceDetectionConfidence:0.4, minFacePresenceConfidence:0.4, minTrackingConfidence:0.4,
+  });
+  let errGpu;
+  try { S.lm = await FaceLandmarker.createFromOptions(files, opts("GPU")); return S.lm; } catch (e){ errGpu = e; }
+  try { S.lm = await FaceLandmarker.createFromOptions(files, opts("CPU")); return S.lm; }
+  catch (e){ throw new Error("detector não iniciou (GPU: " + (errGpu?.message || errGpu) + " / CPU: " + (e?.message || e) + ")"); }
+}
+
+/* ================= medição de um olho ================= */
+function measureEye(L, k, vw, vh){
+  const E = EYES[k], P = i => [L[i].x * vw, L[i].y * vh];
+  const c = P(E.iris[0]);
+  const a = P(E.corners[0]), b = P(E.corners[1]);
+  let th = Math.atan2(b[1]-a[1], b[0]-a[0]);
+  if (th > Math.PI/2) th -= Math.PI; else if (th < -Math.PI/2) th += Math.PI;
+  const ex = [Math.cos(th), Math.sin(th)], ey = [-Math.sin(th), Math.cos(th)];
+  let su=0, nu=0, sv=0, nv=0;
+  for (let i=1;i<5;i++){
+    const p = P(E.iris[i]), dx = p[0]-c[0], dy = p[1]-c[1];
+    const u = dx*ex[0]+dy*ex[1], v = dx*ey[0]+dy*ey[1];
+    if (Math.abs(u) > Math.abs(v)) { su += Math.abs(u); nu++; } else { sv += Math.abs(v); nv++; }
+  }
+  let rx = nu ? su/nu : 0, ry = nv ? sv/nv : 0;
+  if (!rx) rx = ry; if (!ry) ry = rx;
+  if (!rx) return null;
+  // a íris do Face Mesh costuma vir um pouco pequena
+  rx *= 1.04; ry *= 1.04;
+  const r = (rx+ry)/2;
+  const l1 = P(E.lids[0]), l2 = P(E.lids[1]);
+  const open = Math.hypot(l1[0]-l2[0], l1[1]-l2[1]) / (2*r);
+  const mid = [(a[0]+b[0])/2, (a[1]+b[1])/2], hw = Math.hypot(b[0]-a[0], b[1]-a[1])/2 || 1;
+  const gx = ((c[0]-mid[0])*ex[0] + (c[1]-mid[1])*ex[1]) / hw;
+  const gy = ((c[0]-mid[0])*ey[0] + (c[1]-mid[1])*ey[1]) / hw;
+  const poly = E.contour.map(P);
+  const half = Math.ceil(1.4 * Math.max(rx, ry));
+  const inFrame = c[0]-half >= 0 && c[1]-half >= 0 && c[0]+half <= vw && c[1]+half <= vh;
+  return { k, cx:c[0], cy:c[1], rx, ry, r, th, open, gx, gy, poly, half, inFrame };
+}
+
+function pickEye(L, vw, vh){
+  const m = [measureEye(L,0,vw,vh), measureEye(L,1,vw,vh)];
+  if (S.eyeLock !== null) return m[S.eyeLock];
+  if (S.eyePref !== null && m[S.eyePref]) return m[S.eyePref];
+  const ok = m.filter(e => e && e.inFrame);
+  const pool = ok.length ? ok : m.filter(Boolean);
+  return pool.sort((a,b) => b.r - a.r)[0] || null;
+}
+
+/* ================= captura de quadros ================= */
+function grabCrop(e){
+  const h = e.half, sx = Math.round(e.cx - h), sy = Math.round(e.cy - h), s = 2*h;
+  if (cropCv.width !== s || cropCv.height !== s) { cropCv.width = s; cropCv.height = s; }
+  cropCtx.drawImage(video, sx, sy, s, s, 0, 0, s, s);
+  return { img: cropCtx.getImageData(0, 0, s, s), ox:sx, oy:sy };
+}
+
+function sharpness(img, cx, cy, r){
+  const W = img.width, d = img.data, R = Math.floor(r*0.85), R2 = R*R;
+  let s=0, s2=0, n=0;
+  const L = (x,y) => { const p = (y*W+x)*4; return 0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2]; };
+  const x0 = Math.max(1, Math.floor(cx-R)), x1 = Math.min(W-2, Math.ceil(cx+R));
+  const y0 = Math.max(1, Math.floor(cy-R)), y1 = Math.min(img.height-2, Math.ceil(cy+R));
+  for (let y=y0; y<=y1; y+=1) for (let x=x0; x<=x1; x+=1){
+    const dx=x-cx, dy=y-cy; if (dx*dx+dy*dy > R2) continue;
+    const c = L(x,y); if (c > 225) continue;
+    const lap = 4*c - L(x-1,y) - L(x+1,y) - L(x,y-1) - L(x,y+1);
+    s += lap; s2 += lap*lap; n++;
+  }
+  if (n < 50) return 0;
+  const m = s/n; return s2/n - m*m;
+}
+
+const MAX_FRAMES = 54, PER_BIN = 9;
+function considerFrame(e){
+  const { img, ox, oy } = grabCrop(e);
+  const sh = sharpness(img, e.cx-ox, e.cy-oy, e.r);
+  if (!sh) return;
+  const key = "s" + S.step;
+  const round = Math.min(e.rx,e.ry) / Math.max(e.rx,e.ry);
+  const f = { img, ox, oy, cx:e.cx, cy:e.cy, rx:e.rx, ry:e.ry, th:e.th, poly:e.poly.map(p => [p[0]-ox, p[1]-oy]), sharp:sh, round };
+  const bin = S.bins.get(key) || [];
+  if (bin.length >= PER_BIN && bin[bin.length-1].sharp >= sh) return;
+  bin.push(f); bin.sort((a,b) => b.sharp - a.sharp);
+  if (bin.length > PER_BIN) bin.pop(); else S.nFrames++;
+  S.bins.set(key, bin);
+  if (S.nFrames > MAX_FRAMES){
+    let worst=null, wk=null;
+    for (const [k,b] of S.bins){ const last = b[b.length-1]; if (b.length > 2 && (!worst || last.sharp < worst.sharp)) { worst = last; wk = k; } }
+    if (wk){ S.bins.get(wk).pop(); S.nFrames--; }
+  }
+}
+
+/* ================= rastreador próprio de íris =================
+   O detector de rosto precisa ver o rosto inteiro. Perto do olho ele perde,
+   então a partir da última posição boa a gente segue a íris sozinho:
+   procura o disco escuro com branco do olho dos dois lados. */
+const trkCv = document.createElement("canvas");
+const trkCtx = trkCv.getContext("2d", { willReadFrequently:true });
+const TR = 12; // raio da íris na imagem reduzida
+const RADII = [0.8, 0.9, 1, 1.1, 1.22].map(k => k*TR);
+const OFFS = RADII.map(rr => {
+  const inner = [], outer = [], ri = rr*0.85, ro0 = rr*1.1, ro1 = rr*1.5, R = Math.ceil(ro1);
+  for (let y=-R; y<=R; y++) for (let x=-R; x<=R; x++){
+    const d = Math.hypot(x, y);
+    if (d <= ri) inner.push(x, y);
+    else if (d >= ro0 && d <= ro1 && Math.abs(y) < rr*0.5) outer.push(x, y);
+  }
+  return { rr, inner, outer };
+});
+
+function trackIris(prev, vw, vh){
+  const s = TR / prev.r, half = prev.r * 2.6;
+  const n = Math.round(2*half*s);
+  if (trkCv.width !== n){ trkCv.width = n; trkCv.height = n; }
+  trkCtx.fillStyle = "#808080"; trkCtx.fillRect(0, 0, n, n);
+  const sx = prev.cx - half, sy = prev.cy - half;
+  const x0 = Math.max(0, sx), y0 = Math.max(0, sy), x1 = Math.min(vw, sx + 2*half), y1 = Math.min(vh, sy + 2*half);
+  if (x1 - x0 < prev.r || y1 - y0 < prev.r) return null;
+  trkCtx.drawImage(video, x0, y0, x1-x0, y1-y0, (x0-sx)*s, (y0-sy)*s, (x1-x0)*s, (y1-y0)*s);
+  const d = trkCtx.getImageData(0, 0, n, n).data, g = new Float32Array(n*n);
+  let mean = 0;
+  for (let i=0, p=0; i<n*n; i++, p+=4){ const l = (0.2126*d[p]+0.7152*d[p+1]+0.0722*d[p+2])/255; g[i] = Math.min(0.7, l); mean += l; }
+  mean /= n*n;
+  let best = { score:-1 };
+  const c0 = n/2, span = Math.round(TR*0.7);
+  for (const o of OFFS){
+    const lim = Math.ceil(o.rr*1.5);
+    for (let cy = Math.round(c0-span); cy <= c0+span; cy++){
+      if (cy-lim < 0 || cy+lim >= n) continue;
+      for (let cx = Math.round(c0-span); cx <= c0+span; cx++){
+        if (cx-lim < 0 || cx+lim >= n) continue;
+        let si = 0, so = 0;
+        for (let k=0; k<o.inner.length; k+=2) si += g[(cy+o.inner[k+1])*n + cx+o.inner[k]];
+        for (let k=0; k<o.outer.length; k+=2) so += g[(cy+o.outer[k+1])*n + cx+o.outer[k]];
+        const score = so/(o.outer.length/2) - si/(o.inner.length/2);
+        if (score > best.score) best = { score, cx, cy, rr:o.rr };
+      }
+    }
+  }
+  if (best.score < 0) return null;
+  return { cx: sx + best.cx/s, cy: sy + best.cy/s, r: best.rr/s, score: best.score, light: mean };
+}
+
+// Monta o "olho" a partir do rastreador, reaproveitando o formato da última leitura do detector.
+function eyeFromTrack(t, vw, vh){
+  const sh = S.shape, r = t.r;
+  const rx = r*sh.ax, ry = r*sh.ay, half = Math.ceil(1.4*Math.max(rx, ry));
+  return {
+    k: sh.k, cx:t.cx, cy:t.cy, rx, ry, r, th:sh.th, open:1, gx:0, gy:0,
+    poly: sh.poly.map(p => [t.cx + p[0]*r, t.cy + p[1]*r]), half,
+    inFrame: t.cx-half >= 0 && t.cy-half >= 0 && t.cx+half <= vw && t.cy+half <= vh, tracked:true,
+  };
+}
+
+/* ================= laço de detecção ================= */
+const view = $("eyeView"), vctx = view.getContext("2d");
+function sizeView(){
+  const r = view.getBoundingClientRect(), dpr = Math.min(3, devicePixelRatio || 1);
+  view.width = Math.max(1, Math.round(r.width*dpr)); view.height = view.width;
+}
+
+function drawPreview(e){
+  const W = view.width; if (!W) return;
+  vctx.fillStyle = "#000"; vctx.fillRect(0,0,W,W);
+  const vw = video.videoWidth, vh = video.videoHeight;
+  vctx.save(); vctx.translate(W,0); vctx.scale(-1,1); // espelho
+  if (e){
+    const t = { x:e.cx, y:e.cy, h:Math.max(e.rx,e.ry)*1.7 };
+    S.view = S.view ? { x:S.view.x*.7+t.x*.3, y:S.view.y*.7+t.y*.3, h:S.view.h*.7+t.h*.3 } : t;
+    const v = S.view;
+    vctx.drawImage(video, v.x-v.h, v.y-v.h, 2*v.h, 2*v.h, 0, 0, W, W);
+    vctx.restore();
+    const sc = W/(2*v.h);
+    const px = W - (e.cx - (v.x - v.h))*sc, py = (e.cy - (v.y - v.h))*sc;
+    vctx.strokeStyle = S.goodSince ? "rgba(143,209,158,.9)" : "rgba(255,255,255,.55)";
+    vctx.lineWidth = Math.max(2, W/180);
+    vctx.beginPath(); vctx.ellipse(px, py, e.rx*sc*1.12, e.ry*sc*1.12, -e.th, 0, Math.PI*2); vctx.stroke();
+  } else {
+    S.view = null;
+    const s = Math.min(vw, vh);
+    vctx.drawImage(video, (vw-s)/2, (vh-s)/2, s, s, 0, 0, W, W);
+    vctx.restore();
+  }
+}
+
+const detCv = document.createElement("canvas"), detCtx = detCv.getContext("2d");
+function loop(){
+  if (!S.running) return;
+  if (video.readyState >= 2 && video.currentTime !== S.lastT && video.videoWidth){
+    S.lastT = video.currentTime;
+    // o detector roda numa cópia reduzida: mais rápido e mais estável que em 4K
+    const vw = video.videoWidth, vh = video.videoHeight, k = 640/Math.max(vw, vh);
+    const dw = Math.round(vw*k), dh = Math.round(vh*k);
+    if (detCv.width !== dw || detCv.height !== dh){ detCv.width = dw; detCv.height = dh; }
+    detCtx.drawImage(video, 0, 0, dw, dh);
+    let res = null;
+    try { res = S.lm.detectForVideo(detCv, performance.now()); } catch {}
+    onDetect(res);
+  }
+  requestAnimationFrame(loop);
+}
+
+function locateEye(res, vw, vh){
+  const now = performance.now();
+  const L = res?.faceLandmarks?.[0];
+  const lmEye = L ? pickEye(L, vw, vh) : null;
+  if (lmEye){
+    S.shape = {
+      k: lmEye.k, th: lmEye.th, ax: lmEye.rx/lmEye.r, ay: lmEye.ry/lmEye.r,
+      poly: lmEye.poly.map(p => [(p[0]-lmEye.cx)/lmEye.r, (p[1]-lmEye.cy)/lmEye.r]),
+    };
+    const t = trackIris(lmEye, vw, vh);
+    if (t){ S.trkRef = t.score; S.light = t.light; }
+    S.track = { cx:lmEye.cx, cy:lmEye.cy, r:lmEye.r, at:now };
+    S.mode = "rosto";
+    return lmEye;
+  }
+  if (S.track && S.shape && now - S.track.at < 900){
+    const t = trackIris(S.track, vw, vh);
+    if (t && t.score > Math.max(0.06, (S.trkRef||0.15)*0.45)){
+      // suaviza o raio pra não pular
+      t.r = S.track.r*0.6 + t.r*0.4;
+      S.track = { cx:t.cx, cy:t.cy, r:t.r, at:now }; S.light = t.light;
+      S.mode = "rastreio";
+      return eyeFromTrack(t, vw, vh);
+    }
+  }
+  S.mode = "nada";
+  return null;
+}
+
+function debug(vw, vh, e){
+  $("diagLine").textContent = `${vw}×${vh} · ${S.mode}${e ? " · íris " + Math.round(2*e.r) + "px" : ""}${S.light != null ? " · luz " + Math.round(S.light*100) : ""}`;
+}
+
+function onDetect(res){
+  const vw = video.videoWidth, vh = video.videoHeight, minDim = Math.min(vw, vh);
+  const e = locateEye(res, vw, vh);
+  const now = performance.now();
+  if (e) S.lastSeen = now;
+  debug(vw, vh, e);
+
+  if (S.phase === "setup"){
+    drawPreview(e);
+    const good = 0.042*minDim, okR = 0.03*minDim;
+    if (!e){
+      S.goodSince = 0; $("btnScan").disabled = true; setMeter(0);
+      let msg, sub;
+      if (S.light != null && S.light < 0.12){ msg = "Tá escuro demais"; sub = "Acenda a luz do quarto"; }
+      else if (S.lastSeen && now - S.lastSeen < 4000){ msg = "Perdi seu olho"; sub = "Afaste até o rosto aparecer e aproxime devagar"; }
+      else { msg = "Mostre o rosto inteiro"; sub = "Comece com o celular longe e vá aproximando devagar"; }
+      setHud(msg, sub); say(msg);
+      return;
+    }
+    setMeter(e.r/good, e.r >= good);
+    $("btnScan").disabled = !(e.r >= okR && e.inFrame);
+    if (!e.inFrame){ S.goodSince = 0; setHud("Centralize o olho", "Ele precisa caber inteiro na câmera"); say("Centralize o olho"); }
+    else if (e.r < good){ S.goodSince = 0; setHud("Aproxime devagar", "Até a barra ficar verde"); say("Aproxime devagar"); }
+    else if (e.open < 0.55){ S.goodSince = 0; setHud("Abra bem o olho"); say("Abra bem o olho"); }
+    else {
+      if (!S.goodSince) S.goodSince = now;
+      setHud("Perfeito, segura aí", "Começando…");
+      if (now - S.goodSince > 1400) startCapture();
+    }
+    return;
+  }
+
+  if (S.phase === "capture"){
+    if (!e || now < S.collectAfter) return;
+    if (S.eyeLock === null) S.eyeLock = e.k;
+    if (S.source === "file") S.step = video.duration ? Math.floor(video.currentTime/video.duration*8) : 0;
+    const minR = (S.source === "file" ? 0.018 : 0.026) * minDim;
+    if (e.inFrame && e.r >= minR && e.open >= 0.5) considerFrame(e);
+  }
+}
+
+/* ================= fluxo ================= */
+async function startCamera(){
+  $("introErr").hidden = true;
+  say(" ", true); // destrava a voz no iOS (precisa de toque)
+  $("btnStart").disabled = true; $("btnStart").textContent = "Abrindo câmera…";
+  try {
+    S.stream = await navigator.mediaDevices.getUserMedia({
+      audio:false,
+      video:{ facingMode:"user", width:{ ideal:3840 }, height:{ ideal:2160 }, frameRate:{ ideal:30 } },
+    });
+  } catch (err){
+    $("btnStart").disabled = false; $("btnStart").textContent = "Começar";
+    $("introErr").textContent = location.protocol !== "https:" && location.hostname !== "localhost"
+      ? "A câmera só funciona em uma página https. Publique o arquivo num endereço https e abra de novo."
+      : "Não consegui abrir a câmera. Libere o acesso em Ajustes › Safari › Câmera e tente de novo.";
+    $("introErr").hidden = false; return;
+  }
+  video.srcObject = S.stream; S.source = "camera";
+  await video.play().catch(()=>{});
+  show("stage"); sizeView(); keepAwake();
+  setHud("Carregando o detector…"); setMeter(0);
+  $("setupBtns").hidden = false; $("eyeWrap").hidden = false;
+  $("btnStart").disabled = false; $("btnStart").textContent = "Começar";
+  resetCapture(); S.phase = "setup"; S.running = true;
+  previewOnly();
+  await bootDetector();
+}
+
+// Mostra a câmera enquanto o detector não está pronto.
+function previewOnly(){
+  if (!S.running || S.lm) return;
+  if (video.readyState >= 2 && video.videoWidth) drawPreview(null);
+  requestAnimationFrame(previewOnly);
+}
+async function bootDetector(){
+  $("btnRetry").hidden = true;
+  for (let attempt=1; attempt<=3; attempt++){
+    setHud("Carregando o detector…", attempt > 1 ? `Tentativa ${attempt} de 3` : "Na primeira vez pode levar uns segundos");
+    try { await loadModel(); loop(); return; }
+    catch (err){
+      console.error(err);
+      S.lastErr = String(err?.message || err);
+      await sleep(800);
+    }
+  }
+  setHud("Não consegui carregar o detector", S.lastErr);
+  $("btnRetry").hidden = false;
+}
+
+function resetCapture(){
+  S.bins = new Map(); S.nFrames = 0; S.eyeLock = null; S.goodSince = 0; S.lastSeen = 0; S.view = null; S.lastT = -1;
+  S.track = null; S.shape = null; S.trkRef = null; S.light = null; S.step = 0; S.collectAfter = 0; S.mode = "nada";
+  $("stage").classList.add("full"); $("btnLight").textContent = "Luz: tela";
+}
+
+async function startCapture(){
+  if (S.phase !== "setup") return;
+  S.phase = "capture";
+  $("setupBtns").hidden = true; $("eyeWrap").hidden = true; setMeter(0);
+  // na varredura a luz vira anel: reflexo menor na córnea. Espera a exposição assentar.
+  $("stage").classList.remove("full");
+  S.collectAfter = performance.now() + 700;
+  const dot = $("dot"), up = $("arrowUp"), prog = $("prog");
+  const total = STEPS.reduce((s,x) => s + x.ms, 0);
+  let elapsed = 0;
+  for (const [i, st] of STEPS.entries()){
+    if (S.phase !== "capture") return;
+    S.step = i;
+    setHud(st.say, st.sub); say(st.say, true);
+    if (st.pos){ dot.hidden = false; up.hidden = true; dot.style.left = st.pos[0]+"vw"; dot.style.top = st.pos[1]+"vh"; dot.classList.add("pulse"); }
+    else { dot.hidden = true; up.hidden = false; }
+    await sleep(st.ms);
+    elapsed += st.ms; prog.style.width = (elapsed/total*100) + "%";
+  }
+  dot.hidden = true; up.hidden = true; prog.style.width = "0";
+  say("Pronto", true);
+  finishCapture();
+}
+
+function stopCamera(){
+  S.running = false;
+  S.stream?.getTracks().forEach(t => t.stop()); S.stream = null;
+  video.pause(); video.removeAttribute("src"); video.srcObject = null;
+  try { S.wake?.release(); } catch {}
+}
+
+async function finishCapture(){
+  S.phase = "processing";
+  stopCamera();
+  const frames = [...S.bins.values()].flat();
+  show("proc");
+  if (frames.length < 4){
+    $("procTxt").textContent = "Poucos quadros nítidos";
+    $("procNum").textContent = "Tente com o brilho no máximo, mais perto e com o olho bem aberto.";
+    await sleep(3500); show("intro"); return;
+  }
+  try {
+    await processFrames(frames);
+    show("result");
+  } catch (err){
+    console.error(err);
+    $("procTxt").textContent = "Algo deu errado no processamento";
+    $("procNum").textContent = String(err?.message || err);
+    await sleep(4000); show("intro");
+  }
+}
+
+async function startFromFile(file){
+  $("introErr").hidden = true;
+  show("proc"); $("procTxt").textContent = "Carregando o detector"; $("procNum").textContent = "";
+  try { await loadModel(); } catch { show("intro"); $("introErr").textContent = "Não consegui carregar o detector. Confira a internet."; $("introErr").hidden = false; return; }
+  S.source = "file"; resetCapture();
+  video.srcObject = null; video.src = URL.createObjectURL(file); video.muted = true;
+  $("procTxt").textContent = "Lendo o vídeo";
+  await video.play().catch(()=>{});
+  S.phase = "capture"; S.running = true; loop();
+  const upd = setInterval(() => {
+    const p = video.duration ? video.currentTime / video.duration : 0;
+    $("spin").style.setProperty("--p", (p*100).toFixed(1) + "%");
+    $("procNum").textContent = `${S.nFrames} quadros bons`;
+  }, 200);
+  await new Promise(r => video.addEventListener("ended", r, { once:true }));
+  clearInterval(upd);
+  finishCapture();
+}
+
+/* ================= processamento ================= */
+const EXT = 1.14;      // quanto além da borda da íris o recorte normalizado vai
+const MASK_RES = 200;  // resolução da máscara de pálpebra
+
+function prep(f){
+  const { img } = f, W = img.width, H = img.height, d = img.data;
+  const lum = new Float32Array(W*H);
+  for (let i=0, p=0; i<W*H; i++, p+=4) lum[i] = (0.2126*d[p] + 0.7152*d[p+1] + 0.0722*d[p+2]) / 255;
+  Object.assign(f, { lum, W, H, c:[f.cx - f.ox, f.cy - f.oy], ex:[Math.cos(f.th), Math.sin(f.th)], ey:[-Math.sin(f.th), Math.cos(f.th)] });
+  refine(f); refine(f);
+  buildLidMask(f);
+  buildSpecMask(f);
+}
+
+function toCrop(f, u, v){
+  return [ f.c[0] + u*f.rx*f.ex[0] + v*f.ry*f.ey[0], f.c[1] + u*f.rx*f.ex[1] + v*f.ry*f.ey[1] ];
+}
+function toNorm(f, x, y){
+  const dx = x - f.c[0], dy = y - f.c[1];
+  return [ (dx*f.ex[0] + dy*f.ex[1]) / f.rx, (dx*f.ey[0] + dy*f.ey[1]) / f.ry ];
+}
+function lumAt(f, x, y){
+  if (x < 0 || y < 0 || x > f.W-1.001 || y > f.H-1.001) return NaN;
+  const x0 = x|0, y0 = y|0, ax = x-x0, ay = y-y0, i = y0*f.W + x0, L = f.lum;
+  return (L[i]*(1-ax) + L[i+1]*ax)*(1-ay) + (L[i+f.W]*(1-ax) + L[i+f.W+1]*ax)*ay;
+}
+function pointInPoly(poly, x, y){
+  let inside = false;
+  for (let i=0, j=poly.length-1; i<poly.length; j=i++){
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if ((yi > y) !== (yj > y) && x < (xj-xi)*(y-yi)/(yj-yi) + xi) inside = !inside;
+  }
+  return inside;
+}
+function normPoly(f, shrinkU=1, shrinkV=1){
+  const pts = f.poly.map(p => toNorm(f, p[0], p[1]));
+  const mu = pts.reduce((s,p) => s+p[0], 0)/pts.length, mv = pts.reduce((s,p) => s+p[1], 0)/pts.length;
+  return pts.map(([u,v]) => [mu + (u-mu)*shrinkU, mv + (v-mv)*shrinkV]);
+}
+
+// Ajusta centro e raio da íris procurando a borda escura→clara (limbo) em raios.
+function refine(f){
+  const poly = normPoly(f, 0.97, 0.88);
+  const pts = [];
+  const S0 = 0.72, STEP = 0.011, NS = 60;
+  const prof = new Float32Array(NS+1);
+  for (let a=0; a<360; a+=4){
+    const ca = Math.cos(a*D2R), sa = Math.sin(a*D2R);
+    let bad = false;
+    for (let k=0; k<=NS; k++){
+      const s = S0 + k*STEP, [x,y] = toCrop(f, s*ca, s*sa);
+      const l = lumAt(f, x, y); if (Number.isNaN(l)) { bad = true; break; }
+      prof[k] = l;
+    }
+    if (bad) continue;
+    let best = 0, bs = -1;
+    for (let k=3; k<=NS-3; k++){
+      const g = prof[k+3] - prof[k-3];
+      if (g > best){ best = g; bs = S0 + k*STEP; }
+    }
+    if (bs < 0 || best < 0.04) continue;
+    const u = bs*ca, v = bs*sa;
+    if (!pointInPoly(poly, u, v)) continue;
+    pts.push([u, v]);
+  }
+  if (pts.length < 10) return;
+  let fit = circleFit(pts);
+  if (!fit) return;
+  const res = pts.map(([u,v]) => Math.abs(Math.hypot(u-fit.a, v-fit.b) - fit.R));
+  const med = [...res].sort((a,b)=>a-b)[res.length>>1];
+  const keep = pts.filter((_, i) => res[i] <= Math.max(0.02, 2.2*med));
+  if (keep.length >= 10) fit = circleFit(keep) || fit;
+  if (fit.R < 0.82 || fit.R > 1.22 || Math.abs(fit.a) > 0.22 || Math.abs(fit.b) > 0.22) return;
+  f.c = toCrop(f, fit.a, fit.b);
+  f.rx *= fit.R; f.ry *= fit.R;
+}
+function circleFit(pts){
+  let su=0, sv=0, suu=0, svv=0, suv=0, sz=0, suz=0, svz=0; const n = pts.length;
+  for (const [u,v] of pts){ const z = u*u+v*v; su+=u; sv+=v; suu+=u*u; svv+=v*v; suv+=u*v; sz+=z; suz+=u*z; svz+=v*z; }
+  const A = [[suu,suv,su],[suv,svv,sv],[su,sv,n]], b = [-suz,-svz,-sz];
+  const det = m => m[0][0]*(m[1][1]*m[2][2]-m[1][2]*m[2][1]) - m[0][1]*(m[1][0]*m[2][2]-m[1][2]*m[2][0]) + m[0][2]*(m[1][0]*m[2][1]-m[1][1]*m[2][0]);
+  const D0 = det(A); if (Math.abs(D0) < 1e-12) return null;
+  const col = (i) => A.map((row, r) => row.map((x, c) => c === i ? b[r] : x));
+  const Dd = det(col(0))/D0, Ee = det(col(1))/D0, F = det(col(2))/D0;
+  const a = -Dd/2, bb = -Ee/2, R2 = a*a + bb*bb - F;
+  if (R2 <= 0) return null;
+  return { a, b:bb, R:Math.sqrt(R2) };
+}
+
+// Máscara da abertura do olho (fora dela é pálpebra/cílio).
+function buildLidMask(f){
+  const poly = normPoly(f, 0.97, 0.9), M = MASK_RES, m = new Uint8Array(M*M);
+  for (let j=0; j<M; j++){
+    const v = ((j+0.5)/M*2 - 1) * EXT, xs = [];
+    for (let i=0, k=poly.length-1; i<poly.length; k=i++){
+      const [ui,vi] = poly[i], [uk,vk] = poly[k];
+      if ((vi > v) !== (vk > v)) xs.push(ui + (v-vi)*(uk-ui)/(vk-vi));
+    }
+    xs.sort((a,b)=>a-b);
+    for (let p=0; p+1<xs.length; p+=2){
+      const i0 = Math.max(0, Math.ceil((xs[p]/EXT+1)/2*M - 0.5)), i1 = Math.min(M-1, Math.floor((xs[p+1]/EXT+1)/2*M - 0.5));
+      for (let i=i0; i<=i1; i++) m[j*M+i] = 1;
+    }
+  }
+  f.lid = m;
+}
+function lidOK(f, u, v){
+  const i = ((u/EXT + 1)/2*MASK_RES)|0, j = ((v/EXT + 1)/2*MASK_RES)|0;
+  return i >= 0 && j >= 0 && i < MASK_RES && j < MASK_RES && f.lid[j*MASK_RES+i] === 1;
+}
+
+// Máscara do reflexo (pontos muito claros) com dilatação.
+function buildSpecMask(f){
+  const { W, H, lum } = f, vals = [];
+  for (let k=0; k<600; k++){
+    const a = Math.random()*Math.PI*2, r = Math.sqrt(Math.random())*0.9;
+    const u = r*Math.cos(a), v = r*Math.sin(a);
+    if (!lidOK(f,u,v)) continue;
+    const [x,y] = toCrop(f,u,v), l = lumAt(f,x,y);
+    if (!Number.isNaN(l)) vals.push(l);
+  }
+  vals.sort((a,b)=>a-b);
+  const med = vals.length ? vals[vals.length>>1] : 0.3;
+  const thr = Math.min(0.93, Math.max(0.55, med*1.7 + 0.18));
+  const bad = new Uint8Array(W*H);
+  for (let i=0; i<W*H; i++) bad[i] = lum[i] > thr ? 1 : 0;
+  const rad = Math.max(2, Math.round(0.05*f.rx));
+  const tmp = new Uint8Array(W*H);
+  for (let y=0; y<H; y++){ let last = -1e9;
+    for (let x=0; x<W; x++){ if (bad[y*W+x]) last = x; if (x-last <= rad) tmp[y*W+x] = 1; }
+    last = 1e9; for (let x=W-1; x>=0; x--){ if (bad[y*W+x]) last = x; if (last-x <= rad) tmp[y*W+x] = 1; } }
+  const out = new Uint8Array(W*H);
+  for (let x=0; x<W; x++){ let last = -1e9;
+    for (let y=0; y<H; y++){ if (tmp[y*W+x]) last = y; if (y-last <= rad) out[y*W+x] = 1; }
+    last = 1e9; for (let y=H-1; y>=0; y--){ if (tmp[y*W+x]) last = y; if (last-y <= rad) out[y*W+x] = 1; } }
+  f.spec = out; f.specThr = thr;
+}
+
+// Transformação (no espaço normalizado da referência) → ponto no recorte do quadro f.
+function mapPoint(f, T, u, v){
+  const uu = T.cr*u - T.sr*v + T.dx, vv = T.sr*u + T.cr*v + T.dy;
+  return [uu, vv];
+}
+function makeT(dx, dy, rotDeg){ const r = rotDeg*D2R; return { dx, dy, rot:rotDeg, cr:Math.cos(r), sr:Math.sin(r) }; }
+
+function validAt(f, u, v){
+  if (!lidOK(f,u,v)) return NaN;
+  const [x,y] = toCrop(f,u,v);
+  const xi = Math.round(x), yi = Math.round(y);
+  if (xi < 0 || yi < 0 || xi >= f.W || yi >= f.H || f.spec[yi*f.W+xi]) return NaN;
+  return lumAt(f,x,y);
+}
+
+function align(ref, f, refPts){
+  const score = T => {
+    let n=0, sa=0, sb=0, saa=0, sbb=0, sab=0;
+    for (const p of refPts){
+      const [u,v] = mapPoint(f, T, p[0], p[1]);
+      const b = validAt(f,u,v); if (Number.isNaN(b)) continue;
+      const a = p[2]; n++; sa+=a; sb+=b; saa+=a*a; sbb+=b*b; sab+=a*b;
+    }
+    if (n < refPts.length*0.25 || n < 40) return { ncc:-1, gain:1 };
+    const cov = sab - sa*sb/n, va = saa - sa*sa/n, vb = sbb - sb*sb/n;
+    return { ncc: cov / Math.sqrt(Math.max(1e-9, va*vb)), gain: sb > 0 ? sa/sb : 1 };
+  };
+  let best = { T:makeT(0,0,0), ...score(makeT(0,0,0)) };
+  const search = (cx, cy, cr, st, rs) => {
+    for (let dx=-2; dx<=2; dx++) for (let dy=-2; dy<=2; dy++) for (let dr=-2; dr<=2; dr++){
+      const T = makeT(cx+dx*st, cy+dy*st, cr+dr*rs), s = score(T);
+      if (s.ncc > best.ncc) best = { T, ...s };
+    }
+  };
+  search(0, 0, 0, 0.04, 3);
+  search(best.T.dx, best.T.dy, best.T.rot, 0.015, 1.2);
+  search(best.T.dx, best.T.dy, best.T.rot, 0.006, 0.5);
+  return best;
+}
+
+async function progress(p, txt){
+  $("spin").style.setProperty("--p", (p*100).toFixed(1) + "%");
+  if (txt) $("procTxt").textContent = txt;
+  await tick();
+}
+
+async function processFrames(frames){
+  $("procNum").textContent = `${frames.length} quadros`;
+  await progress(0.02, "Encontrando a íris");
+  for (let i=0; i<frames.length; i++){ prep(frames[i]); if (i % 3 === 0) await progress(0.02 + 0.18*i/frames.length); }
+
+  const maxSharp = Math.max(...frames.map(f => f.sharp));
+  for (const f of frames) f.sn = f.sharp / maxSharp;
+  const ref = frames.reduce((a,b) => (b.sn*b.round**6 > a.sn*a.round**6 ? b : a));
+
+  // pontos de referência para alinhar
+  const refPts = [], G = 56;
+  for (let j=0; j<G; j++) for (let i=0; i<G; i++){
+    const u = ((i+0.5)/G*2-1)*0.95, v = ((j+0.5)/G*2-1)*0.95;
+    if (u*u+v*v > 0.9) continue;
+    const l = validAt(ref, u, v); if (!Number.isNaN(l)) refPts.push([u, v, l]);
+  }
+
+  await progress(0.22, "Alinhando os quadros");
+  ref.T = makeT(0,0,0); ref.ncc = 1; ref.gain = 1;
+  for (let i=0; i<frames.length; i++){
+    const f = frames[i]; if (f === ref) continue;
+    const a = align(ref, f, refPts);
+    f.T = a.T; f.ncc = a.ncc; f.gain = Math.min(1.6, Math.max(0.6, a.gain));
+    if (i % 2 === 0) await progress(0.22 + 0.33*i/frames.length);
+  }
+  const used = frames.filter(f => f === ref || f.ncc > 0.45);
+  for (const f of used) f.w = (f.sn**2) * (f.round**6) * (f === ref ? 1.3 : Math.max(0, f.ncc)**2) + 1e-6;
+
+  // resolução final proporcional ao tamanho real da íris (≈2× super-resolução)
+  const rMed = used.map(f => (f.rx+f.ry)/2).sort((a,b)=>a-b)[used.length>>1];
+  const N = Math.max(400, Math.min(1100, Math.round(4*EXT*rMed)));
+  const NN = N*N;
+
+  const acc = new Float32Array(NN*3), wsum = new Float32Array(NN), lsq = new Float32Array(NN);
+  const sample = (f, pass, mean, sigma) => {
+    const d = f.img.data, W = f.W, g = f.gain/255;
+    for (let j=0; j<N; j++){
+      const v = ((j+0.5)/N*2-1)*EXT;
+      for (let i=0; i<N; i++){
+        const u = ((i+0.5)/N*2-1)*EXT;
+        if (u*u+v*v > EXT*EXT) continue;
+        const [uu, vv] = mapPoint(f, f.T, u, v);
+        if (!lidOK(f, uu, vv)) continue;
+        const [x, y] = toCrop(f, uu, vv);
+        if (x < 0 || y < 0 || x > f.W-1.001 || y > f.H-1.001) continue;
+        const xi = x|0, yi = y|0;
+        if (f.spec[yi*W+xi]) continue;
+        const ax = x-xi, ay = y-yi, p = (yi*W+xi)*4, q = p + W*4;
+        const w00=(1-ax)*(1-ay), w10=ax*(1-ay), w01=(1-ax)*ay, w11=ax*ay;
+        const r = (d[p]*w00 + d[p+4]*w10 + d[q]*w01 + d[q+4]*w11)*g;
+        const gg = (d[p+1]*w00 + d[p+5]*w10 + d[q+1]*w01 + d[q+5]*w11)*g;
+        const b = (d[p+2]*w00 + d[p+6]*w10 + d[q+2]*w01 + d[q+6]*w11)*g;
+        const l = 0.2126*r + 0.7152*gg + 0.0722*b;
+        const o = j*N+i;
+        let w = f.w;
+        if (pass === 2){
+          if (mean[o] < 0) continue;
+          const dd = l - mean[o], s = sigma[o];
+          w *= Math.exp(-(dd*dd)/(2*s*s));
+        } else lsq[o] += w*l*l;
+        acc[o*3] += w*r; acc[o*3+1] += w*gg; acc[o*3+2] += w*b; wsum[o] += w;
+      }
+    }
+  };
+
+  await progress(0.56, "Empilhando os quadros");
+  for (let i=0; i<used.length; i++){ sample(used[i], 1); if (i % 2 === 0) await progress(0.56 + 0.17*i/used.length); }
+  const mean = new Float32Array(NN), sigma = new Float32Array(NN);
+  for (let o=0; o<NN; o++){
+    const w = wsum[o];
+    if (w < 1e-9){ mean[o] = -1; continue; }
+    const r = acc[o*3]/w, g = acc[o*3+1]/w, b = acc[o*3+2]/w, l = 0.2126*r + 0.7152*g + 0.0722*b;
+    mean[o] = l; sigma[o] = Math.max(0.035, 1.3*Math.sqrt(Math.max(0, lsq[o]/w - l*l)));
+  }
+
+  await progress(0.74, "Tirando o reflexo");
+  acc.fill(0); wsum.fill(0);
+  for (let i=0; i<used.length; i++){ sample(used[i], 2, mean, sigma); if (i % 2 === 0) await progress(0.74 + 0.16*i/used.length); }
+
+  await progress(0.92, "Preenchendo os vazios");
+  const R = new Float32Array(NN), Gc = new Float32Array(NN), B = new Float32Array(NN), Wt = new Float32Array(NN);
+  const wRef = Math.max(...used.map(f => f.w)) * 0.5;
+  let holes = 0;
+  for (let o=0; o<NN; o++){
+    const w = wsum[o];
+    if (w > 1e-9){ R[o] = acc[o*3]/w; Gc[o] = acc[o*3+1]/w; B[o] = acc[o*3+2]/w; Wt[o] = Math.min(1, w/wRef); }
+    else holes++;
+  }
+  pushPull([R, Gc, B], Wt, N);
+
+  S.result = { N, R, G:Gc, B, frames:frames.length, used:used.length, holes:holes/NN };
+  $("stats").textContent = `${used.length} de ${frames.length} quadros · íris de ${Math.round(2*rMed)} px · saída 1800 px`;
+  await progress(1, "Pronto");
+  await render();
+}
+
+// Preenche buracos puxando cor das regiões vizinhas (pirâmide push-pull).
+function pushPull(chs, W0, N){
+  const levels = [{ n:N, c:chs.map(c => { const o = new Float32Array(c.length); for (let i=0;i<c.length;i++) o[i] = c[i]*W0[i]; return o; }), w:W0 }];
+  while (levels[levels.length-1].n > 2){
+    const L = levels[levels.length-1], n = L.n, m = Math.ceil(n/2);
+    const c = chs.map(() => new Float32Array(m*m)), w = new Float32Array(m*m);
+    for (let y=0; y<n; y++) for (let x=0; x<n; x++){
+      const o = y*n+x, p = (y>>1)*m + (x>>1);
+      w[p] += L.w[o]; for (let k=0;k<3;k++) c[k][p] += L.c[k][o];
+    }
+    for (let p=0; p<m*m; p++){ if (w[p] > 1){ for (let k=0;k<3;k++) c[k][p] /= w[p]; w[p] = 1; } }
+    levels.push({ n:m, c, w });
+  }
+  for (let li = levels.length-2; li >= 0; li--){
+    const L = levels[li], C = levels[li+1], n = L.n, m = C.n;
+    for (let y=0; y<n; y++) for (let x=0; x<n; x++){
+      const o = y*n+x, w = Math.min(1, L.w[o]);
+      if (w >= 1) continue;
+      const p = (y>>1)*m + (x>>1), cw = Math.max(1e-6, C.w[p]);
+      for (let k=0;k<3;k++){
+        const own = L.c[k][o], coarse = C.c[k][p]/cw;
+        L.c[k][o] = own + coarse*(1-w);
+      }
+      L.w[o] = 1;
+    }
+  }
+  const top = levels[0];
+  for (let k=0;k<3;k++) chs[k].set(top.c[k]);
+}
+
+/* ================= revelação (ajustes finais) ================= */
+function boxBlur(src, N, r){
+  r = Math.max(1, Math.round(r));
+  const a = new Float32Array(src), b = new Float32Array(src.length), inv = 1/(2*r+1);
+  for (let it=0; it<3; it++){
+    for (let y=0; y<N; y++){ const row = y*N; let s = 0;
+      for (let x=-r; x<=r; x++) s += a[row + Math.min(N-1, Math.max(0, x))];
+      for (let x=0; x<N; x++){ b[row+x] = s*inv; s += a[row + Math.min(N-1, x+r+1)] - a[row + Math.max(0, x-r)]; } }
+    for (let x=0; x<N; x++){ let s = 0;
+      for (let y=-r; y<=r; y++) s += b[Math.min(N-1, Math.max(0, y))*N + x];
+      for (let y=0; y<N; y++){ a[y*N+x] = s*inv; s += b[Math.min(N-1, y+r+1)*N + x] - b[Math.max(0, y-r)*N + x]; } }
+  }
+  return a;
+}
+
+const outCv = document.createElement("canvas"), OUT = 1800;
+outCv.width = OUT; outCv.height = OUT;
+const tmpCv = document.createElement("canvas");
+let renderTimer = 0, rendering = false, renderAgain = false;
+
+function params(){
+  return { sharp:+$("kSharp").value, clar:+$("kClar").value, sat:+$("kSat").value, con:+$("kCon").value, glint:$("kGlint").checked };
+}
+
+async function render(){
+  if (rendering){ renderAgain = true; return; }
+  rendering = true;
+  const { N, R, G, B } = S.result, P = params(), NN = N*N;
+  const chs = [R, G, B].map(c => new Float32Array(c));
+  const sr = Math.max(1, N/900), lr = N/45;
+  for (let k=0; k<3; k++){
+    const c = chs[k];
+    const b1 = boxBlur(c, N, sr * 0.8);
+    for (let i=0;i<NN;i++) c[i] += P.sharp*1.1*(c[i]-b1[i]);
+    const b2 = boxBlur(c, N, lr * 0.55);
+    for (let i=0;i<NN;i++) c[i] += P.clar*0.7*(c[i]-b2[i]);
+  }
+  // níveis automáticos dentro da íris
+  const ls = [];
+  for (let j=0; j<N; j+=3) for (let i=0; i<N; i+=3){
+    const u = ((i+0.5)/N*2-1)*EXT, v = ((j+0.5)/N*2-1)*EXT;
+    if (u*u+v*v > 0.9) continue; const o = j*N+i;
+    ls.push(0.2126*chs[0][o] + 0.7152*chs[1][o] + 0.0722*chs[2][o]);
+  }
+  ls.sort((a,b)=>a-b);
+  const lo = ls[Math.floor(ls.length*0.01)] || 0, hi = ls[Math.floor(ls.length*0.995)] || 1;
+  const scale = 0.92/Math.max(0.05, hi-lo);
+
+  tmpCv.width = N; tmpCv.height = N;
+  const tctx = tmpCv.getContext("2d"), id = tctx.createImageData(N, N), d = id.data;
+  for (let j=0; j<N; j++){
+    const v = ((j+0.5)/N*2-1)*EXT;
+    for (let i=0; i<N; i++){
+      const u = ((i+0.5)/N*2-1)*EXT, rr = Math.sqrt(u*u+v*v), o = j*N+i, p = o*4;
+      let alpha = 1 - smooth(0.97, 1.07, rr);
+      if (alpha <= 0){ d[p]=d[p+1]=d[p+2]=0; d[p+3]=255; continue; }
+      let r = (chs[0][o]-lo)*scale + 0.02, g = (chs[1][o]-lo)*scale + 0.02, b = (chs[2][o]-lo)*scale + 0.02;
+      const l = 0.2126*r + 0.7152*g + 0.0722*b;
+      r = l + (r-l)*P.sat; g = l + (g-l)*P.sat; b = l + (b-l)*P.sat;
+      r = 0.42 + (r-0.42)*P.con; g = 0.42 + (g-0.42)*P.con; b = 0.42 + (b-0.42)*P.con;
+      // escurece levemente o anel externo, como numa lente de estúdio
+      alpha *= 1 - 0.25*smooth(0.75, 1.02, rr);
+      d[p] = clamp255(r*alpha); d[p+1] = clamp255(g*alpha); d[p+2] = clamp255(b*alpha); d[p+3] = 255;
+    }
+  }
+  tctx.putImageData(id, 0, 0);
+
+  const o = outCv.getContext("2d");
+  o.fillStyle = "#000"; o.fillRect(0, 0, OUT, OUT);
+  o.imageSmoothingEnabled = true; o.imageSmoothingQuality = "high";
+  const side = OUT * 0.94;
+  o.drawImage(tmpCv, (OUT-side)/2, (OUT-side)/2, side, side);
+  if (P.glint){
+    const k = side/(2*EXT), gx = OUT/2 - 0.3*k, gy = OUT/2 - 0.34*k, gr = 0.07*k;
+    const grd = o.createRadialGradient(gx, gy, 0, gx, gy, gr);
+    grd.addColorStop(0, "rgba(255,255,255,.95)"); grd.addColorStop(0.45, "rgba(255,255,255,.55)"); grd.addColorStop(1, "rgba(255,255,255,0)");
+    o.fillStyle = grd; o.beginPath(); o.arc(gx, gy, gr, 0, Math.PI*2); o.fill();
+  }
+  const blob = await new Promise(r => outCv.toBlob(r, "image/jpeg", 0.95));
+  S.blob = blob;
+  const old = $("outImg").src;
+  $("outImg").src = URL.createObjectURL(blob);
+  if (old.startsWith("blob:")) URL.revokeObjectURL(old);
+  rendering = false;
+  if (renderAgain){ renderAgain = false; render(); }
+}
+const smooth = (a, b, x) => { const t = Math.min(1, Math.max(0, (x-a)/(b-a))); return t*t*(3-2*t); };
+const clamp255 = x => x <= 0 ? 0 : x >= 1 ? 255 : (x*255 + 0.5)|0;
+
+async function save(){
+  if (!S.blob) return;
+  const file = new File([S.blob], "minha-iris.jpg", { type:"image/jpeg" });
+  try {
+    if (navigator.canShare?.({ files:[file] })) { await navigator.share({ files:[file], title:"Minha íris" }); return; }
+  } catch (e){ if (e?.name === "AbortError") return; }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(S.blob); a.download = "minha-iris.jpg";
+  document.body.appendChild(a); a.click(); a.remove();
+}
+
+/* ================= eventos ================= */
+$("btnStart").onclick = startCamera;
+$("btnVideo").onclick = () => $("fileVideo").click();
+$("fileVideo").onchange = e => { const f = e.target.files?.[0]; if (f) startFromFile(f); e.target.value = ""; };
+$("btnScan").onclick = () => startCapture();
+$("btnRetry").onclick = () => bootDetector();
+$("btnSwap").onclick = () => { S.eyePref = S.eyePref === 0 ? 1 : 0; S.view = null; };
+$("btnLight").onclick = () => {
+  const full = $("stage").classList.toggle("full"); S.userLight = true;
+  $("btnLight").textContent = full ? "Luz: tela" : "Luz: anel";
+};
+$("btnCancel").onclick = () => { S.phase = "idle"; stopCamera(); speechSynthesis.cancel?.(); show("intro"); };
+$("btnAgain").onclick = () => { S.result = null; show("intro"); };
+$("btnSave").onclick = save;
+for (const [inp, out] of [["kSharp","oSharp"],["kClar","oClar"],["kSat","oSat"],["kCon","oCon"]]){
+  $(inp).addEventListener("input", () => {
+    $(out).textContent = (+$(inp).value).toFixed(1);
+    clearTimeout(renderTimer); renderTimer = setTimeout(render, 120);
+  });
+}
+$("kGlint").addEventListener("change", () => render());
+addEventListener("resize", () => { if (!$("stage").hidden) sizeView(); });
+
+// pré-carrega o detector enquanto a pessoa lê a tela inicial
+loadModel().catch(err => console.warn("pré-carga falhou", err));
+</script>
+</body>
+</html>
